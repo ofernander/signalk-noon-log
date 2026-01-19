@@ -5,6 +5,15 @@ const DistanceCalculator = require('./lib/distance');
 const DataCollector = require('./lib/data/collector');
 const ReportScheduler = require('./lib/scheduler');
 const Mailer = require('./lib/email/mailer');
+const VoyageManager = require('./lib/voyageManager');
+
+// FIX #9: Define constants
+const CONSTANTS = {
+  MAX_LOG_TEXT_LENGTH: 10000,
+  MAX_VOYAGE_NAME_LENGTH: 100,
+  DEFAULT_HISTORY_LIMIT: 30,
+  MAX_HISTORY_LIMIT: 1000
+};
 
 module.exports = function (app) {
   let plugin = {
@@ -29,6 +38,9 @@ module.exports = function (app) {
     // Pending log text (submitted before noon)
     pendingLogText: null,
 
+    // Track intervals for proper cleanup
+    intervals: [],
+
     start: async function (options) {
       plugin.options = options;
       
@@ -49,6 +61,9 @@ module.exports = function (app) {
           app.debug('No active voyage found, starting new voyage');
           plugin.storage.startNewVoyage('First Voyage');
         }
+
+        // Initialize voyage manager
+        plugin.voyageManager = new VoyageManager(plugin.storage);
 
         // Initialize distance calculator
         plugin.distanceCalculator = new DistanceCalculator(app, plugin.storage);
@@ -73,6 +88,7 @@ module.exports = function (app) {
         let positionCheckCount = 0;
         const maxPositionChecks = 24; // 24 checks * 5 seconds = 120 seconds timeout
         
+        // Store interval in plugin.intervals array for proper cleanup
         const positionCheckInterval = setInterval(() => {
           positionCheckCount++;
           
@@ -81,6 +97,8 @@ module.exports = function (app) {
           if (position && position.latitude) {
             // Position available - start scheduler
             clearInterval(positionCheckInterval);
+            const index = plugin.intervals.indexOf(positionCheckInterval);
+            if (index > -1) plugin.intervals.splice(index, 1);
             
             plugin.scheduler = new ReportScheduler(app, options, plugin.handleNoonReport.bind(plugin));
             plugin.scheduler.start();
@@ -95,6 +113,8 @@ module.exports = function (app) {
           } else if (positionCheckCount >= maxPositionChecks) {
             // Timeout - start anyway but warn
             clearInterval(positionCheckInterval);
+            const index = plugin.intervals.indexOf(positionCheckInterval);
+            if (index > -1) plugin.intervals.splice(index, 1);
             
             plugin.scheduler = new ReportScheduler(app, options, plugin.handleNoonReport.bind(plugin));
             plugin.scheduler.start();
@@ -107,8 +127,8 @@ module.exports = function (app) {
             app.setPluginError('Started without position data - reports will fail until GPS is available');
           }
         }, 5000); // Check every 5 seconds
-
-        // Don't set "Running" status until position is acquired or timeout
+        
+        plugin.intervals.push(positionCheckInterval);
 
       } catch (error) {
         app.setPluginError(`Startup error: ${error.message}`);
@@ -118,6 +138,10 @@ module.exports = function (app) {
 
     stop: function () {
       app.debug('Stopping Noon Log plugin');
+
+      // Clean up all intervals
+      plugin.intervals.forEach(interval => clearInterval(interval));
+      plugin.intervals = [];
 
       if (plugin.scheduler) {
         plugin.scheduler.stop();
@@ -245,36 +269,243 @@ module.exports = function (app) {
      */
     registerWithRouter: function (router) {
       const express = require('express');
+      const jsonParser = express.json();
       
       // Serve static files from public directory
       router.use(express.static(path.join(__dirname, '../public')));
 
-      // API endpoints
-      router.post('/api/submitLog', express.json(), (req, res) => {
+      // FIX #11: Add input validation to API endpoints
+      // API endpoint: Submit log
+      router.post('/api/submitLog', jsonParser, (req, res) => {
         try {
           const { logText } = req.body;
+          
+          // Validate input
+          if (logText && typeof logText !== 'string') {
+            return res.status(400).json({ 
+              success: false, 
+              error: 'Log text must be a string' 
+            });
+          }
+          
+          if (logText && logText.length > CONSTANTS.MAX_LOG_TEXT_LENGTH) {
+            return res.status(400).json({ 
+              success: false, 
+              error: `Log text too long (max ${CONSTANTS.MAX_LOG_TEXT_LENGTH} characters)` 
+            });
+          }
+          
           const result = plugin.createLogEntry(logText);
           res.json(result);
         } catch (error) {
-          res.json({ success: false, error: error.message });
+          app.error('Error in submitLog:', error);
+          res.status(500).json({ success: false, error: error.message });
         }
       });
 
       // API endpoint: Get history
       router.get('/api/history', (req, res) => {
         try {
-          const limit = parseInt(req.query.limit) || 30;
+          let limit = parseInt(req.query.limit) || CONSTANTS.DEFAULT_HISTORY_LIMIT;
+          
+          // Validate limit
+          if (isNaN(limit) || limit < 1) {
+            limit = CONSTANTS.DEFAULT_HISTORY_LIMIT;
+          }
+          if (limit > CONSTANTS.MAX_HISTORY_LIMIT) {
+            limit = CONSTANTS.MAX_HISTORY_LIMIT;
+          }
+          
           const logs = plugin.storage.getAllLogs().slice(0, limit);
           res.json(logs);
         } catch (error) {
-          res.json({ success: false, error: error.message });
+          app.error('Error in history:', error);
+          res.status(500).json({ success: false, error: error.message });
+        }
+      });
+
+      // API endpoint: Get current voyage
+      router.get('/api/voyage', (req, res) => {
+        try {
+          const voyage = plugin.storage.getCurrentVoyage();
+          res.json({ success: true, data: voyage });
+        } catch (error) {
+          app.error('Error in voyage:', error);
+          res.status(500).json({ success: false, error: error.message });
+        }
+      });
+
+      // API endpoint: Get all voyages
+      router.get('/api/voyages', (req, res) => {
+        try {
+          const voyages = plugin.voyageManager.getAllVoyages();
+          res.json({ success: true, data: voyages });
+        } catch (error) {
+          app.error('Error in voyages:', error);
+          res.status(500).json({ success: false, error: error.message });
+        }
+      });
+
+      // API endpoint: Get voyage by ID
+      router.get('/api/voyages/:id', (req, res) => {
+        try {
+          const voyageId = parseInt(req.params.id);
+          
+          // Validate ID
+          if (isNaN(voyageId) || voyageId < 1) {
+            return res.status(400).json({ 
+              success: false, 
+              error: 'Invalid voyage ID' 
+            });
+          }
+          
+          const data = plugin.voyageManager.getVoyageById(voyageId);
+          res.json({ success: true, data });
+        } catch (error) {
+          app.error('Error in getVoyage:', error);
+          res.status(500).json({ success: false, error: error.message });
+        }
+      });
+
+      // API endpoint: Delete voyage
+      router.delete('/api/voyages/:id', (req, res) => {
+        try {
+          const voyageId = parseInt(req.params.id);
+          
+          // Validate ID
+          if (isNaN(voyageId) || voyageId < 1) {
+            return res.status(400).json({ 
+              success: false, 
+              error: 'Invalid voyage ID' 
+            });
+          }
+          
+          const result = plugin.voyageManager.deleteVoyage(voyageId);
+          res.json({ success: true, data: result });
+        } catch (error) {
+          app.error('Error in deleteVoyage:', error);
+          res.status(500).json({ success: false, error: error.message });
+        }
+      });
+
+      // API endpoint: Rename voyage
+      router.put('/api/voyages/:id/rename', jsonParser, (req, res) => {
+        try {
+          const voyageId = parseInt(req.params.id);
+          const { name } = req.body;
+          
+          // Validate ID
+          if (isNaN(voyageId) || voyageId < 1) {
+            return res.status(400).json({ 
+              success: false, 
+              error: 'Invalid voyage ID' 
+            });
+          }
+          
+          // Validate name
+          if (!name || typeof name !== 'string' || name.trim().length === 0) {
+            return res.status(400).json({ 
+              success: false, 
+              error: 'Voyage name is required' 
+            });
+          }
+          
+          if (name.length > CONSTANTS.MAX_VOYAGE_NAME_LENGTH) {
+            return res.status(400).json({ 
+              success: false, 
+              error: `Voyage name too long (max ${CONSTANTS.MAX_VOYAGE_NAME_LENGTH} characters)` 
+            });
+          }
+          
+          const result = plugin.voyageManager.renameVoyage(voyageId, name);
+          
+          // Publish updated voyage name if it's the active voyage
+          const currentVoyage = plugin.storage.getCurrentVoyage();
+          if (currentVoyage.startTimestamp) {
+            const voyages = plugin.voyageManager.getAllVoyages();
+            const renamedVoyage = voyages.find(v => v.id === voyageId);
+            if (renamedVoyage && renamedVoyage.isActive && plugin.publisher) {
+              plugin.publisher.publishStatus();
+            }
+          }
+          
+          res.json({ success: true, data: result });
+        } catch (error) {
+          app.error('Error in renameVoyage:', error);
+          res.status(500).json({ success: false, error: error.message });
+        }
+      });
+
+      // API endpoint: Export voyage as GPX
+      router.get('/api/voyages/:id/export-gpx', (req, res) => {
+        try {
+          const voyageId = parseInt(req.params.id);
+          
+          // Validate ID
+          if (isNaN(voyageId) || voyageId < 1) {
+            return res.status(400).json({ 
+              success: false, 
+              error: 'Invalid voyage ID' 
+            });
+          }
+          
+          const { voyage } = plugin.voyageManager.getVoyageById(voyageId);
+          const gpx = plugin.voyageManager.generateGPX(voyageId);
+          
+          res.setHeader('Content-Type', 'application/gpx+xml');
+          res.setHeader('Content-Disposition', `attachment; filename="${plugin.voyageManager.getExportFilename(voyage, 'gpx')}"`);
+          res.send(gpx);
+        } catch (error) {
+          app.error('Error in exportGPX:', error);
+          res.status(500).json({ success: false, error: error.message });
+        }
+      });
+
+      // API endpoint: Export voyage logbook as formatted text
+      router.get('/api/voyages/:id/export-logbook', (req, res) => {
+        try {
+          const voyageId = parseInt(req.params.id);
+          
+          // Validate ID
+          if (isNaN(voyageId) || voyageId < 1) {
+            return res.status(400).json({ 
+              success: false, 
+              error: 'Invalid voyage ID' 
+            });
+          }
+          
+          const { voyage } = plugin.voyageManager.getVoyageById(voyageId);
+          const logbook = plugin.voyageManager.generateLogbook(voyageId);
+          
+          res.setHeader('Content-Type', 'text/plain');
+          res.setHeader('Content-Disposition', `attachment; filename="${plugin.voyageManager.getExportFilename(voyage, 'txt')}"`);
+          res.send(logbook);
+        } catch (error) {
+          app.error('Error in exportLogbook:', error);
+          res.status(500).json({ success: false, error: error.message });
         }
       });
 
       // API endpoint: Reset voyage
-      router.post('/api/resetVoyage', require('express').json(), (req, res) => {
+      router.post('/api/resetVoyage', jsonParser, (req, res) => {
         try {
           const { voyageName } = req.body;
+          
+          // Validate voyage name
+          if (voyageName && typeof voyageName !== 'string') {
+            return res.status(400).json({ 
+              success: false, 
+              error: 'Voyage name must be a string' 
+            });
+          }
+          
+          if (voyageName && voyageName.length > CONSTANTS.MAX_VOYAGE_NAME_LENGTH) {
+            return res.status(400).json({ 
+              success: false, 
+              error: `Voyage name too long (max ${CONSTANTS.MAX_VOYAGE_NAME_LENGTH} characters)` 
+            });
+          }
+          
           const result = plugin.storage.startNewVoyage(voyageName);
           
           // Publish voyage reset
@@ -284,7 +515,8 @@ module.exports = function (app) {
           
           res.json({ success: true, data: result });
         } catch (error) {
-          res.json({ success: false, error: error.message });
+          app.error('Error in resetVoyage:', error);
+          res.status(500).json({ success: false, error: error.message });
         }
       });
 
@@ -294,7 +526,8 @@ module.exports = function (app) {
           const logs = plugin.storage.exportLogs();
           res.json(logs);
         } catch (error) {
-          res.json({ success: false, error: error.message });
+          app.error('Error in export:', error);
+          res.status(500).json({ success: false, error: error.message });
         }
       });
 
@@ -302,16 +535,19 @@ module.exports = function (app) {
       router.post('/api/sendNow', async (req, res) => {
         try {
           if (!plugin.scheduler) {
-            res.json({ success: false, error: 'Scheduler not initialized' });
-            return;
+            return res.status(503).json({ 
+              success: false, 
+              error: 'Scheduler not initialized' 
+            });
           }
           
           // Trigger report immediately
           plugin.scheduler.manualTrigger();
           
-          res.json({ success: true, message: 'Report sent' });
+          res.json({ success: true, message: 'Report triggered' });
         } catch (error) {
-          res.json({ success: false, error: error.message });
+          app.error('Error in sendNow:', error);
+          res.status(500).json({ success: false, error: error.message });
         }
       });
 

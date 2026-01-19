@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>SignalK-Noon-Log</title>
+    <title>SignalK Noon Log</title>
     <link rel="stylesheet" href="/signalk-noon-log/css/core.css">
 </head>
 <body>
@@ -96,6 +96,18 @@
                 </div>
             </div>
 
+            <!-- Voyages Card -->
+            <div class="card">
+                <div class="card-header">
+                    <h2>Voyages</h2>
+                </div>
+                <div class="card-body">
+                    <div id="voyagesList">
+                        <div class="loading">Loading voyages...</div>
+                    </div>
+                </div>
+            </div>
+
             <!-- Actions Card -->
             <div class="card">
                 <div class="card-header">
@@ -106,11 +118,8 @@
                         <button class="btn btn-secondary" id="viewHistoryBtn">
                             📋 View History
                         </button>
-                        <button class="btn btn-secondary" id="resetVoyageBtn">
-                            🔄 Reset Trip Log
-                        </button>
-                        <button class="btn btn-secondary" id="exportLogsBtn">
-                            💾 Export Logs
+                        <button class="btn btn-secondary" id="createNewVoyageBtn">
+                            ➕ Create New Voyage
                         </button>
                         <button class="btn btn-warning" id="sendNowBtn">
                             📤 Send Log Now
@@ -132,14 +141,28 @@
                 </div>
             </div>
 
+            <!-- Voyage Detail Modal -->
+            <div id="voyageModal" class="modal" style="display: none;">
+                <div class="modal-content">
+                    <div class="modal-header">
+                        <h2 id="voyageModalTitle">Voyage Details</h2>
+                        <button class="close-btn" id="closeVoyageBtn">&times;</button>
+                    </div>
+                    <div class="modal-body" id="voyageContent">
+                        <div class="loading">Loading...</div>
+                    </div>
+                </div>
+            </div>
+
         </div>
 
         <!-- Footer -->
         <footer class="footer">
-            <p>SignalK Noon Log Plugin - Made with love for Taylor</p>
+            <p>SignalK Noon Log Plugin</p>
         </footer>
     </div>
 
+    <script src="/signalk-noon-log/js/voyages.js"></script>
     <script src="/signalk-noon-log/js/main.js"></script>
 </body>
 </html>

@@ -1,6 +1,54 @@
 /**
  * Collects data from SignalK paths
  */
+
+// FIX #9: Define conversion constants at top of file
+const CONVERSIONS = {
+  KELVIN_TO_CELSIUS: 273.15,
+  CELSIUS_TO_FAHRENHEIT_MULT: 9 / 5,
+  CELSIUS_TO_FAHRENHEIT_ADD: 32,
+  MS_TO_KNOTS: 1.94384,
+  MS_TO_KMH: 3.6,
+  PASCAL_TO_HPA: 0.01,
+  PASCAL_TO_INHG: 0.0002953,
+  METERS_TO_FEET: 3.28084,
+  METERS_TO_KM: 0.001,
+  METERS_TO_NM: 1 / 1852,
+  RADIANS_TO_DEGREES: 180 / Math.PI,
+  MINUTES_PER_DEGREE: 60
+};
+
+// FIX #13: Date/time helper functions
+const DateHelpers = {
+  /**
+   * Convert JavaScript timestamp (ms) to Unix timestamp (seconds)
+   */
+  toUnixTimestamp(date) {
+    return Math.floor(date.getTime() / 1000);
+  },
+
+  /**
+   * Convert Unix timestamp (seconds) to JavaScript Date
+   */
+  fromUnixTimestamp(unix) {
+    return new Date(unix * 1000);
+  },
+
+  /**
+   * Get current Unix timestamp in seconds
+   */
+  nowUnix() {
+    return Math.floor(Date.now() / 1000);
+  },
+
+  /**
+   * Format date as YYYY-MM-DD
+   */
+  formatDateString(date) {
+    return date.toISOString().split('T')[0];
+  }
+};
+
 class DataCollector {
   constructor(app, options) {
     this.app = app;
@@ -17,7 +65,8 @@ class DataCollector {
       const value = this.app.getSelfPath(path);
       return value?.value !== undefined ? value.value : null;
     } catch (error) {
-      this.app.debug(`Error getting value for path ${path}:`, error.message);
+      // FIX #8: Better error handling with context
+      this.app.debug(`Error getting value for path ${path}: ${error.message}`);
       return null;
     }
   }
@@ -57,10 +106,17 @@ class DataCollector {
     if (path.includes('temperature')) {
       if (useMetric) {
         // Kelvin to Celsius
-        return { value: value - 273.15, unit: '°C' };
+        return { 
+          value: value - CONVERSIONS.KELVIN_TO_CELSIUS, 
+          unit: '°C' 
+        };
       } else {
         // Kelvin to Fahrenheit
-        return { value: (value - 273.15) * 9/5 + 32, unit: '°F' };
+        const celsius = value - CONVERSIONS.KELVIN_TO_CELSIUS;
+        return { 
+          value: celsius * CONVERSIONS.CELSIUS_TO_FAHRENHEIT_MULT + CONVERSIONS.CELSIUS_TO_FAHRENHEIT_ADD, 
+          unit: '°F' 
+        };
       }
     }
 
@@ -71,25 +127,37 @@ class DataCollector {
         return { value: value, unit: 'm/s' };
       } else {
         // m/s to knots
-        return { value: value * 1.94384, unit: 'kts' };
+        return { 
+          value: value * CONVERSIONS.MS_TO_KNOTS, 
+          unit: 'kts' 
+        };
       }
     }
 
     // Wind angle (SignalK uses radians)
     if (path.includes('wind') && (path.includes('angle') || path.includes('direction'))) {
       // Always convert radians to degrees
-      const degrees = value * (180 / Math.PI);
-      return { value: degrees < 0 ? degrees + 360 : degrees, unit: '°' };
+      const degrees = value * CONVERSIONS.RADIANS_TO_DEGREES;
+      return { 
+        value: degrees < 0 ? degrees + 360 : degrees, 
+        unit: '°' 
+      };
     }
 
     // Pressure (SignalK uses Pascals)
     if (path.includes('pressure')) {
       if (useMetric) {
         // Pascal to hPa (hectopascal/millibar)
-        return { value: value / 100, unit: 'hPa' };
+        return { 
+          value: value * CONVERSIONS.PASCAL_TO_HPA, 
+          unit: 'hPa' 
+        };
       } else {
         // Pascal to inHg (inches of mercury)
-        return { value: value * 0.0002953, unit: 'inHg' };
+        return { 
+          value: value * CONVERSIONS.PASCAL_TO_INHG, 
+          unit: 'inHg' 
+        };
       }
     }
 
@@ -97,10 +165,16 @@ class DataCollector {
     if (path.includes('speed') && !path.includes('wind')) {
       if (useMetric) {
         // m/s to km/h
-        return { value: value * 3.6, unit: 'km/h' };
+        return { 
+          value: value * CONVERSIONS.MS_TO_KMH, 
+          unit: 'km/h' 
+        };
       } else {
         // m/s to knots
-        return { value: value * 1.94384, unit: 'kts' };
+        return { 
+          value: value * CONVERSIONS.MS_TO_KNOTS, 
+          unit: 'kts' 
+        };
       }
     }
 
@@ -108,10 +182,16 @@ class DataCollector {
     if (path.includes('distance')) {
       if (useMetric) {
         // meters to kilometers
-        return { value: value / 1000, unit: 'km' };
+        return { 
+          value: value * CONVERSIONS.METERS_TO_KM, 
+          unit: 'km' 
+        };
       } else {
         // meters to nautical miles
-        return { value: value / 1852, unit: 'nm' };
+        return { 
+          value: value * CONVERSIONS.METERS_TO_NM, 
+          unit: 'nm' 
+        };
       }
     }
 
@@ -121,7 +201,10 @@ class DataCollector {
         return { value: value, unit: 'm' };
       } else {
         // meters to feet
-        return { value: value * 3.28084, unit: 'ft' };
+        return { 
+          value: value * CONVERSIONS.METERS_TO_FEET, 
+          unit: 'ft' 
+        };
       }
     }
 
@@ -131,6 +214,8 @@ class DataCollector {
 
   /**
    * Format value for display
+   * @param {*} value - Value to format
+   * @returns {string} Formatted value
    */
   formatValue(value) {
     if (value === null || value === undefined) {
@@ -154,18 +239,23 @@ class DataCollector {
     const collectedData = [];
 
     for (const pathConfig of customPaths) {
-      const rawValue = this.getValue(pathConfig.path);
-      
-      if (rawValue !== null) {
-        const converted = this.convertValueWithUnit(rawValue, pathConfig.path);
+      try {
+        const rawValue = this.getValue(pathConfig.path);
         
-        collectedData.push({
-          path: pathConfig.path,
-          label: pathConfig.label || pathConfig.path,
-          value: this.formatValue(converted.value),
-          unit: converted.unit,
-          rawValue: converted.value
-        });
+        if (rawValue !== null) {
+          const converted = this.convertValueWithUnit(rawValue, pathConfig.path);
+          
+          collectedData.push({
+            path: pathConfig.path,
+            label: pathConfig.label || pathConfig.path,
+            value: this.formatValue(converted.value),
+            unit: converted.unit,
+            rawValue: converted.value
+          });
+        }
+      } catch (error) {
+        // FIX #8: Better error handling - continue collecting other data
+        this.app.error(`Error collecting data for ${pathConfig.path}: ${error.message}`);
       }
     }
 
@@ -179,19 +269,23 @@ class DataCollector {
   collectNoonData() {
     const position = this.getPosition();
     const customData = this.collectCustomData();
-    const timestamp = Date.now();
+    const now = Date.now();
 
+    // FIX #13: Use date helper functions for consistency
     return {
-      timestamp: Math.floor(timestamp / 1000), // Unix timestamp in seconds
-      dateStr: new Date(timestamp).toISOString().split('T')[0], // YYYY-MM-DD
+      timestamp: DateHelpers.toUnixTimestamp(new Date(now)),
+      dateStr: DateHelpers.formatDateString(new Date(now)),
       position: position,
       customData: customData
     };
   }
 
   /**
-   * Get human-readable location string (reverse geocoding placeholder)
-   * For now, just returns lat/lon formatted
+   * FIX #12: Actually use the formatPosition method or remove it
+   * Get human-readable location string
+   * @param {number} lat - Latitude
+   * @param {number} lon - Longitude
+   * @returns {string} Formatted position string
    */
   formatPosition(lat, lon) {
     if (!lat || !lon) return 'Position unavailable';
@@ -200,13 +294,17 @@ class DataCollector {
     const lonDir = lon >= 0 ? 'E' : 'W';
 
     const latDeg = Math.floor(Math.abs(lat));
-    const latMin = ((Math.abs(lat) - latDeg) * 60).toFixed(3);
+    const latMin = ((Math.abs(lat) - latDeg) * CONVERSIONS.MINUTES_PER_DEGREE).toFixed(3);
 
     const lonDeg = Math.floor(Math.abs(lon));
-    const lonMin = ((Math.abs(lon) - lonDeg) * 60).toFixed(3);
+    const lonMin = ((Math.abs(lon) - lonDeg) * CONVERSIONS.MINUTES_PER_DEGREE).toFixed(3);
 
     return `${latDeg}°${latMin}'${latDir}, ${lonDeg}°${lonMin}'${lonDir}`;
   }
 }
+
+// Export helpers for use in other modules
+DataCollector.DateHelpers = DateHelpers;
+DataCollector.CONVERSIONS = CONVERSIONS;
 
 module.exports = DataCollector;

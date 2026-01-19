@@ -123,6 +123,13 @@ class DeltaPublisher {
         path: 'navigation.log.reportsSent',
         value: reportsSent
       });
+      
+      // Current voyage name
+      const voyage = this.plugin.storage.getCurrentVoyage();
+      deltas.push({
+        path: 'navigation.log.voyageName',
+        value: voyage.name
+      });
     }
 
     this.sendDeltas(deltas);
@@ -149,6 +156,9 @@ class DeltaPublisher {
    * Publish voyage reset (distance back to 0)
    */
   publishVoyageReset() {
+    // Get new voyage info
+    const voyage = this.plugin.storage.getCurrentVoyage();
+    
     const deltas = [
       {
         path: 'navigation.log.distance.total',
@@ -157,6 +167,10 @@ class DeltaPublisher {
       {
         path: 'navigation.log.distance.sinceLast',
         value: 0
+      },
+      {
+        path: 'navigation.log.voyageName',
+        value: voyage.name
       }
     ];
 

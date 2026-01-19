@@ -8,7 +8,8 @@ class NoonLogUI {
             timeUntilNoon: null,
             lastLog: null,
             totalDistance: 0,
-            reportsSent: 0
+            reportsSent: 0,
+            voyageName: '--'
         };
 
         this.init();
@@ -17,7 +18,22 @@ class NoonLogUI {
     init() {
         this.connectWebSocket();
         this.setupEventListeners();
+        this.loadInitialData();
         this.updateUI();
+    }
+
+    // Load initial data from API
+    async loadInitialData() {
+        try {
+            const response = await fetch('/plugins/signalk-noon-log/api/voyage');
+            const result = await response.json();
+            if (result.success && result.data) {
+                this.state.voyageName = result.data.name;
+                this.updateUI();
+            }
+        } catch (error) {
+            console.error('Failed to load initial voyage data:', error);
+        }
     }
 
     // WebSocket Connection to SignalK delta stream
@@ -87,6 +103,8 @@ class NoonLogUI {
                     this.state.totalDistance = value;
                 } else if (path === 'navigation.log.reportsSent') {
                     this.state.reportsSent = value;
+                } else if (path === 'navigation.log.voyageName') {
+                    this.state.voyageName = value;
                 } else if (path === 'navigation.log') {
                     // Full log entry update
                     this.state.lastLog = value;
@@ -112,50 +130,37 @@ class NoonLogUI {
 
     // Setup event listeners
     setupEventListeners() {
-        // Log form submission
         document.getElementById('logForm').addEventListener('submit', (e) => {
             e.preventDefault();
             this.submitLog();
         });
 
-        // Clear button
         document.getElementById('clearLogBtn').addEventListener('click', () => {
             document.getElementById('logText').value = '';
         });
 
-        // View history button
         document.getElementById('viewHistoryBtn').addEventListener('click', () => {
             this.showHistory();
         });
 
-        // Reset voyage button
-        document.getElementById('resetVoyageBtn').addEventListener('click', () => {
-            this.resetVoyage();
+        document.getElementById('createNewVoyageBtn').addEventListener('click', () => {
+            this.createNewVoyage();
         });
 
-        // Export logs button
-        document.getElementById('exportLogsBtn').addEventListener('click', () => {
-            this.exportLogs();
-        });
-
-        // Send now button
         document.getElementById('sendNowBtn').addEventListener('click', () => {
             this.sendNow();
         });
 
-        // Close history modal
         document.getElementById('closeHistoryBtn').addEventListener('click', () => {
             document.getElementById('historyModal').style.display = 'none';
         });
 
-        // Close modal on outside click
         document.getElementById('historyModal').addEventListener('click', (e) => {
             if (e.target.id === 'historyModal') {
                 document.getElementById('historyModal').style.display = 'none';
             }
         });
 
-        // Update time until noon every minute
         setInterval(() => {
             this.updateTimeDisplay();
         }, 60000);
@@ -207,7 +212,7 @@ class NoonLogUI {
             const logs = await response.json();
             this.displayHistory(logs);
         } catch (error) {
-            document.getElementById('historyContent').innerHTML = 
+            document.getElementById('historyContent').innerHTML =
                 `<div class="empty-state"><p>Error loading history: ${error.message}</p></div>`;
         }
     }
@@ -226,23 +231,26 @@ class NoonLogUI {
         for (const log of logs) {
             const date = new Date(log.timestamp * 1000);
             const dateStr = date.toLocaleDateString('en-US', {
-                weekday: 'short',
-                year: 'numeric',
                 month: 'short',
-                day: 'numeric'
+                day: 'numeric',
+                year: 'numeric'
+            });
+            const timeStr = date.toLocaleTimeString('en-US', {
+                hour: '2-digit',
+                minute: '2-digit'
             });
 
-            const badgeClass = log.email_sent ? 'sent' : 'local';
-            const badgeText = log.email_sent ? '✓ Sent' : '📝 Local';
-
-            const preview = log.log_text 
+            const preview = log.log_text
                 ? log.log_text.substring(0, 100) + (log.log_text.length > 100 ? '...' : '')
-                : 'No log entry';
+                : 'No log text';
+
+            const badgeClass = log.email_sent ? 'sent' : 'pending';
+            const badgeText = log.email_sent ? '✓ Sent' : '⏳ Pending';
 
             html += `
                 <div class="history-item">
                     <div class="history-item-header">
-                        <span class="history-item-date">${dateStr}</span>
+                        <span class="history-item-date">${dateStr} ${timeStr}</span>
                         <span class="history-item-badge ${badgeClass}">${badgeText}</span>
                     </div>
                     <div class="history-item-preview">${this.escapeHtml(preview)}</div>
@@ -254,14 +262,17 @@ class NoonLogUI {
         historyContent.innerHTML = html;
     }
 
-    // Reset voyage
-    async resetVoyage() {
-        if (!confirm('Are you sure you want to reset the trip log? This will start distance tracking from zero.')) {
+    async createNewVoyage() {
+        if (!confirm('Start a new voyage? This will archive the current voyage and reset distance tracking to zero. All current logs will be preserved in the archived voyage.')) {
             return;
         }
 
-        const voyageName = prompt('Enter a name for the new voyage (optional):');
-        
+        const voyageName = prompt('Enter a name for the new voyage:', `Voyage ${new Date().toLocaleDateString()}`);
+
+        if (voyageName === null) {
+            return;
+        }
+
         try {
             const response = await fetch('/plugins/signalk-noon-log/api/resetVoyage', {
                 method: 'POST',
@@ -272,7 +283,12 @@ class NoonLogUI {
             const result = await response.json();
 
             if (result.success) {
-                this.showMessage('success', 'Trip log has been reset');
+                this.showMessage('success', 'New voyage created! The previous voyage has been archived.');
+                await this.loadInitialData();
+
+                if (window.voyageManager) {
+                    await window.voyageManager.loadVoyages();
+                }
             } else {
                 this.showMessage('error', `Error: ${result.error}`);
             }
@@ -281,30 +297,6 @@ class NoonLogUI {
         }
     }
 
-    // Export logs
-    async exportLogs() {
-        try {
-            const response = await fetch('/plugins/signalk-noon-log/api/export');
-            const logs = await response.json();
-
-            if (logs && logs.length > 0) {
-                const blob = new Blob([JSON.stringify(logs, null, 2)], { type: 'application/json' });
-                const url = URL.createObjectURL(blob);
-                const a = document.createElement('a');
-                a.href = url;
-                a.download = `noon-logs-${new Date().toISOString().split('T')[0]}.json`;
-                a.click();
-                URL.revokeObjectURL(url);
-                this.showMessage('success', 'Logs exported successfully');
-            } else {
-                this.showMessage('error', 'No logs to export');
-            }
-        } catch (error) {
-            this.showMessage('error', `Error: ${error.message}`);
-        }
-    }
-
-    // Send log now (trigger immediate report)
     async sendNow() {
         if (!confirm('Send the current log now (bypasses scheduled time)?')) {
             return;
@@ -327,14 +319,12 @@ class NoonLogUI {
         }
     }
 
-    // Update UI with current state
     updateUI() {
         this.updateTimeDisplay();
         this.updateVoyageDisplay();
         this.updateLastReport();
     }
 
-    // Update connection status
     updateConnectionStatus(connected) {
         const statusDot = document.querySelector('.status-dot');
         const statusText = document.querySelector('.status-text');
@@ -350,7 +340,6 @@ class NoonLogUI {
         }
     }
 
-    // Update time display
     updateTimeDisplay() {
         const nextNoonEl = document.getElementById('nextNoonTime');
         const timeUntilEl = document.getElementById('timeUntilNoon');
@@ -361,8 +350,7 @@ class NoonLogUI {
                 minute: '2-digit'
             });
 
-            const hours = this.state.timeUntilNoon.hours;
-            const minutes = this.state.timeUntilNoon.minutes;
+            const { hours, minutes } = this.state.timeUntilNoon;
             timeUntilEl.textContent = `${hours}h ${minutes}m`;
         } else {
             nextNoonEl.textContent = '--:--';
@@ -370,16 +358,14 @@ class NoonLogUI {
         }
     }
 
-    // Update voyage display
     updateVoyageDisplay() {
         const voyageNameEl = document.getElementById('voyageName');
         const totalDistanceEl = document.getElementById('totalDistance');
 
-        voyageNameEl.textContent = 'Active Voyage';
+        voyageNameEl.textContent = this.state.voyageName || '--';
         totalDistanceEl.textContent = `${this.state.totalDistance.toFixed(1)} nm`;
     }
 
-    // Update last report display
     updateLastReport() {
         const lastReportContent = document.getElementById('lastReportContent');
 
@@ -398,48 +384,21 @@ class NoonLogUI {
         });
 
         let html = '<div class="report-content">';
-
-        html += `<div class="report-section">`;
-        html += `<h3>${dateStr}</h3>`;
-        html += `</div>`;
+        html += `<div class="report-section"><h3>${dateStr}</h3></div>`;
 
         if (log.logText) {
-            html += `<div class="report-section">`;
-            html += `<h3>Captain's Log</h3>`;
-            html += `<div class="report-log-text">${this.escapeHtml(log.logText)}</div>`;
-            html += `</div>`;
-        }
-
-        if (log.position && log.position.latitude && log.position.longitude) {
-            html += `<div class="report-section">`;
-            html += `<h3>Position</h3>`;
-            html += `<div class="report-data-item">`;
-            html += `<div class="report-data-value">${log.position.latitude.toFixed(6)}°, ${log.position.longitude.toFixed(6)}°</div>`;
-            html += `</div>`;
-            html += `</div>`;
-        }
-
-        if (log.distance) {
-            html += `<div class="report-section">`;
-            html += `<h3>Distance</h3>`;
-            html += `<div class="report-data-grid">`;
-            html += `<div class="report-data-item">`;
-            html += `<div class="report-data-label">Since Last</div>`;
-            html += `<div class="report-data-value">${log.distance.distanceSinceLast.toFixed(1)} nm</div>`;
-            html += `</div>`;
-            html += `<div class="report-data-item">`;
-            html += `<div class="report-data-label">Total</div>`;
-            html += `<div class="report-data-value">${log.distance.totalDistance.toFixed(1)} nm</div>`;
-            html += `</div>`;
-            html += `</div>`;
-            html += `</div>`;
+            html += `
+                <div class="report-section">
+                    <h3>Captain's Log</h3>
+                    <div class="report-log-text">${this.escapeHtml(log.logText)}</div>
+                </div>
+            `;
         }
 
         html += '</div>';
         lastReportContent.innerHTML = html;
     }
 
-    // Show message
     showMessage(type, text) {
         const messageDiv = document.getElementById('submitMessage');
         messageDiv.className = `message ${type}`;
@@ -451,7 +410,6 @@ class NoonLogUI {
         }, 5000);
     }
 
-    // Escape HTML
     escapeHtml(text) {
         const div = document.createElement('div');
         div.textContent = text;
@@ -459,7 +417,16 @@ class NoonLogUI {
     }
 }
 
-// Initialize when DOM is ready
 document.addEventListener('DOMContentLoaded', () => {
     window.noonLogUI = new NoonLogUI();
+
+    setTimeout(() => {
+        if (typeof VoyageManager !== 'undefined') {
+            window.voyageManager = new VoyageManager(window.noonLogUI);
+            window.voyageManager.initializeModalHandlers();
+            window.voyageManager.loadVoyages();
+        } else {
+            console.error('VoyageManager not loaded');
+        }
+    }, 100);
 });
