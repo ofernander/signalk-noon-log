@@ -1,0 +1,145 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>SignalK-Noon-Log</title>
+    <link rel="stylesheet" href="/signalk-noon-log/css/core.css">
+</head>
+<body>
+    <div class="container">
+        <!-- Header -->
+        <header class="header">
+            <div class="header-content">
+                <h1><img src="/signalk-noon-log/assets/icons/signalk-noon-log-icon_72x72.gif" alt="Noon Log Icon" style="height: 40px; vertical-align: middle; margin-right: 10px;">SignalK-Noon-Log</h1>
+                <div class="status-indicator" id="connectionStatus">
+                    <span class="status-dot offline"></span>
+                    <span class="status-text">Connecting...</span>
+                </div>
+            </div>
+        </header>
+
+        <!-- Main Content -->
+        <div class="main-content">
+            
+            <!-- Status Card -->
+            <div class="card">
+                <div class="card-header">
+                    <h2>Status</h2>
+                </div>
+                <div class="card-body">
+                    <div class="info-grid">
+                        <div class="info-item">
+                            <div class="info-label">Next Noon Report</div>
+                            <div class="info-value" id="nextNoonTime">--:--</div>
+                        </div>
+                        <div class="info-item">
+                            <div class="info-label">Time Until</div>
+                            <div class="info-value" id="timeUntilNoon">-- hours -- min</div>
+                        </div>
+                        <div class="info-item">
+                            <div class="info-label">Active Voyage</div>
+                            <div class="info-value" id="voyageName">--</div>
+                        </div>
+                        <div class="info-item">
+                            <div class="info-label">Total Distance</div>
+                            <div class="info-value" id="totalDistance">-- nm</div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Log Entry Card -->
+            <div class="card">
+                <div class="card-header">
+                    <h2>Daily Log Entry</h2>
+                    <div class="card-subtitle">Submit your log entry before noon</div>
+                </div>
+                <div class="card-body">
+                    <form id="logForm">
+                        <div class="form-group">
+                            <label for="logText">Captain's Log</label>
+                            <textarea 
+                                id="logText" 
+                                name="logText" 
+                                rows="8" 
+                                placeholder="Enter your log entry for today... weather conditions, notable events, course changes, etc."
+                            ></textarea>
+                            <div class="form-help">
+                                This log entry will be included in the next noon report along with automatic position and weather data.
+                            </div>
+                        </div>
+                        
+                        <div class="button-group">
+                            <button type="submit" class="btn btn-primary" id="submitLogBtn">
+                                Submit Log Entry
+                            </button>
+                            <button type="button" class="btn btn-secondary" id="clearLogBtn">
+                                Clear
+                            </button>
+                        </div>
+
+                        <div id="submitMessage" class="message" style="display: none;"></div>
+                    </form>
+                </div>
+            </div>
+
+            <!-- Last Report Card -->
+            <div class="card">
+                <div class="card-header">
+                    <h2>Last Report</h2>
+                </div>
+                <div class="card-body" id="lastReportContent">
+                    <div class="empty-state">
+                        <p>No reports yet</p>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Actions Card -->
+            <div class="card">
+                <div class="card-header">
+                    <h2>Actions</h2>
+                </div>
+                <div class="card-body">
+                    <div class="button-group">
+                        <button class="btn btn-secondary" id="viewHistoryBtn">
+                            📋 View History
+                        </button>
+                        <button class="btn btn-secondary" id="resetVoyageBtn">
+                            🔄 Reset Trip Log
+                        </button>
+                        <button class="btn btn-secondary" id="exportLogsBtn">
+                            💾 Export Logs
+                        </button>
+                        <button class="btn btn-warning" id="sendNowBtn">
+                            📤 Send Log Now
+                        </button>
+                    </div>
+                </div>
+            </div>
+
+            <!-- History Modal -->
+            <div id="historyModal" class="modal" style="display: none;">
+                <div class="modal-content">
+                    <div class="modal-header">
+                        <h2>Log History</h2>
+                        <button class="close-btn" id="closeHistoryBtn">&times;</button>
+                    </div>
+                    <div class="modal-body" id="historyContent">
+                        <div class="loading">Loading...</div>
+                    </div>
+                </div>
+            </div>
+
+        </div>
+
+        <!-- Footer -->
+        <footer class="footer">
+            <p>SignalK Noon Log Plugin - Made with love for Taylor</p>
+        </footer>
+    </div>
+
+    <script src="/signalk-noon-log/js/main.js"></script>
+</body>
+</html>

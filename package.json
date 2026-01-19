@@ -1,0 +1,38 @@
+{
+  "name": "signalk-noon-log",
+  "version": "0.1.0",
+  "description": "Semi-automatic logbook and vessel tracker",
+  "main": "plugin/index.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "keywords": [
+    "signalk-node-server-plugin",
+    "signalk-webapp",
+    "signalk-category-notifications",
+    "signalk",
+    "logbook",
+    "noon",
+    "position report",
+    "tracker",
+    "email"
+  ],
+  "author": {
+    "name": "Oliver Fernander",
+    "email": "oliver@fernander.net"
+  },
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/ofernander/signalk-noon-log.git"
+  },
+  "dependencies": {
+    "nodemailer": "^6.9.0",
+    "sql.js": "^1.10.0"
+  },
+  "signalk": {
+    "appIcon": "./assets/icons/signalk-noon-log-icon_72x72.gif",
+    "displayName": "SignalK Noon Log"
+  },
+  "signalk-plugin-enabled-by-default": false
+}
