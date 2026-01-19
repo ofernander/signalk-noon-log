@@ -105,13 +105,13 @@ class Mailer {
 
     // Generate subject
     const vesselName = this.formatter.getVesselName();
-    const subjectPrefix = emailConfig.subjectPrefix || 'Noon Report';
+    const subjectPrefix = emailConfig.subjectPrefix || 'Log Report';
     const dateStr = new Date(logData.dateStr).toLocaleDateString('en-US', {
       month: 'short',
       day: 'numeric',
       year: 'numeric'
     });
-    const subject = `${subjectPrefix} - ${dateStr} - ${vesselName}`;
+    const subject = `${vesselName} - ${subjectPrefix} - ${dateStr}`;
 
     // Generate email content
     const htmlBody = this.formatter.generateEmailHTML(logData);
@@ -127,7 +127,7 @@ class Mailer {
     };
 
     try {
-      this.app.debug(`Sending noon log email to: ${recipients.join(', ')}`);
+      this.app.debug(`Sending log report email to: ${recipients.join(', ')}`);
       const info = await this.transporter.sendMail(mailOptions);
       this.app.debug(`Email sent successfully: ${info.messageId}`);
       
@@ -155,7 +155,7 @@ class Mailer {
         latitude: 37.7749,
         longitude: -122.4194
       },
-      logText: 'This is a test noon log entry from the SignalK Noon Log plugin.',
+      logText: 'This is a test log entry from the SignalK Noon Log plugin.',
       customData: [
         { label: 'Wind Speed', value: '12.5', unit: 'knots' },
         { label: 'Air Temperature', value: '22.3', unit: '°C' },

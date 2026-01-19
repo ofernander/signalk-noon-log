@@ -17,10 +17,32 @@ module.exports = {
       default: '12:00'
     },
 
-    useLocalTime: {
-      type: 'boolean',
-      title: 'Use Local Time',
-      default: false
+    timezoneMode: {
+      type: 'string',
+      title: 'Timezone Mode',
+      enum: ['gps', 'fixed'],
+      enumNames: ['GPS Time', 'Fixed Timezone'],
+      default: 'gps'
+    },
+
+    timezoneOffset: {
+      type: 'string',
+      title: 'Fixed Timezone Offset',
+      enum: [
+        '-12:00', '-11:00', '-10:00', '-09:00', '-08:00', '-07:00', 
+        '-06:00', '-05:00', '-04:00', '-03:00', '-02:00', '-01:00',
+        '+00:00', '+01:00', '+02:00', '+03:00', '+04:00', '+05:00',
+        '+06:00', '+07:00', '+08:00', '+09:00', '+10:00', '+11:00',
+        '+12:00', '+13:00', '+14:00'
+      ],
+      enumNames: [
+        'UTC-12:00', 'UTC-11:00', 'UTC-10:00', 'UTC-09:00', 'UTC-08:00', 'UTC-07:00',
+        'UTC-06:00', 'UTC-05:00', 'UTC-04:00', 'UTC-03:00', 'UTC-02:00', 'UTC-01:00',
+        'UTC+00:00 (Zulu)', 'UTC+01:00', 'UTC+02:00', 'UTC+03:00', 'UTC+04:00', 'UTC+05:00',
+        'UTC+06:00', 'UTC+07:00', 'UTC+08:00', 'UTC+09:00', 'UTC+10:00', 'UTC+11:00',
+        'UTC+12:00', 'UTC+13:00', 'UTC+14:00'
+      ],
+      default: '+00:00'
     },
 
     useMetricUnits: {
@@ -111,7 +133,7 @@ module.exports = {
         subjectPrefix: {
           type: 'string',
           title: 'Email Subject Prefix',
-          default: 'Noon Report'
+          default: 'Log Report'
         }
       }
     }

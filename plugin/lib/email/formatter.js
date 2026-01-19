@@ -63,7 +63,7 @@ class EmailFormatter {
    */
   generateEmailHTML(logData) {
     const vesselName = this.getVesselName();
-    const { position, customData, logText, distance, dateStr } = logData;
+    const { position, customData, logText, distance, dateStr, timestamp } = logData;
 
     const lat = position?.latitude;
     const lon = position?.longitude;
@@ -75,6 +75,31 @@ class EmailFormatter {
     }
 
     const formattedPosition = lat && lon ? this.formatPosition(lat, lon) : 'Position unavailable';
+    
+    // Use timestamp (in seconds) for accurate time display
+    const reportTime = new Date((timestamp || Date.now() / 1000) * 1000);
+    
+    // Calculate vessel time based on timezone mode
+    let vesselTime, timezoneLabel;
+    if (this.options.timezoneMode === 'fixed') {
+      // Use fixed timezone offset
+      const offset = this.options.timezoneOffset || '+00:00';
+      const [sign, hours, minutes] = offset.match(/([+-])(\d{2}):(\d{2})/).slice(1);
+      const offsetMinutes = (sign === '+' ? 1 : -1) * (parseInt(hours) * 60 + parseInt(minutes));
+      const localTime = new Date(reportTime.getTime() + offsetMinutes * 60000);
+      vesselTime = localTime.toISOString().substring(11, 16);
+      timezoneLabel = `UTC${offset}`;
+    } else if (this.options.timezoneMode === 'gps' && lon) {
+      // Calculate timezone from longitude (approximate)
+      const offsetHours = Math.round(lon / 15);
+      const localTime = new Date(reportTime.getTime() + offsetHours * 3600000);
+      vesselTime = localTime.toISOString().substring(11, 16);
+      timezoneLabel = `UTC${offsetHours >= 0 ? '+' : ''}${offsetHours}`;
+    } else {
+      // Default to UTC
+      vesselTime = reportTime.toISOString().substring(11, 16);
+      timezoneLabel = 'UTC';
+    }
 
     // Build HTML
     let html = `
@@ -197,12 +222,19 @@ class EmailFormatter {
 <body>
   <div class="container">
     <div class="header">
-      <h1>${vesselName} - Noon Report</h1>
-      <p class="date">${new Date(dateStr).toLocaleDateString('en-US', { 
+      <h1>${vesselName} - Log Report</h1>
+      <p class="date">Vessel Time & Date: ${vesselTime} - ${reportTime.toLocaleDateString('en-US', { 
         weekday: 'long', 
         year: 'numeric', 
         month: 'long', 
         day: 'numeric' 
+      })}</p>
+      <p class="date">UTC Time & Date: ${reportTime.toISOString().substring(11, 16)} - ${reportTime.toLocaleDateString('en-US', { 
+        weekday: 'long', 
+        year: 'numeric', 
+        month: 'long', 
+        day: 'numeric',
+        timeZone: 'UTC'
       })}</p>
     </div>
 `;
@@ -296,18 +328,50 @@ class EmailFormatter {
    */
   generateEmailText(logData) {
     const vesselName = this.getVesselName();
-    const { position, customData, logText, distance, dateStr } = logData;
+    const { position, customData, logText, distance, dateStr, timestamp } = logData;
 
     const lat = position?.latitude;
     const lon = position?.longitude;
     const formattedPosition = lat && lon ? this.formatPosition(lat, lon) : 'Position unavailable';
+    
+    // Use timestamp (in seconds) for accurate time display
+    const reportTime = new Date((timestamp || Date.now() / 1000) * 1000);
+    
+    // Calculate vessel time based on timezone mode
+    let vesselTime, timezoneLabel;
+    if (this.options.timezoneMode === 'fixed') {
+      // Use fixed timezone offset
+      const offset = this.options.timezoneOffset || '+00:00';
+      const [sign, hours, minutes] = offset.match(/([+-])(\d{2}):(\d{2})/).slice(1);
+      const offsetMinutes = (sign === '+' ? 1 : -1) * (parseInt(hours) * 60 + parseInt(minutes));
+      const localTime = new Date(reportTime.getTime() + offsetMinutes * 60000);
+      vesselTime = localTime.toISOString().substring(11, 16);
+      timezoneLabel = `UTC${offset}`;
+    } else if (this.options.timezoneMode === 'gps' && lon) {
+      // Calculate timezone from longitude (approximate)
+      const offsetHours = Math.round(lon / 15);
+      const localTime = new Date(reportTime.getTime() + offsetHours * 3600000);
+      vesselTime = localTime.toISOString().substring(11, 16);
+      timezoneLabel = `UTC${offsetHours >= 0 ? '+' : ''}${offsetHours}`;
+    } else {
+      // Default to UTC
+      vesselTime = reportTime.toISOString().substring(11, 16);
+      timezoneLabel = 'UTC';
+    }
 
-    let text = `${vesselName} - NOON REPORT\n`;
-    text += `${new Date(dateStr).toLocaleDateString('en-US', { 
+    let text = `${vesselName} - LOG REPORT\n`;
+    text += `Vessel Time & Date: ${vesselTime} - ${reportTime.toLocaleDateString('en-US', { 
       weekday: 'long', 
       year: 'numeric', 
       month: 'long', 
       day: 'numeric' 
+    })}\n`;
+    text += `UTC Time & Date: ${reportTime.toISOString().substring(11, 16)} - ${reportTime.toLocaleDateString('en-US', { 
+      weekday: 'long', 
+      year: 'numeric', 
+      month: 'long', 
+      day: 'numeric',
+      timeZone: 'UTC'
     })}\n`;
     text += `${'='.repeat(50)}\n\n`;
 
