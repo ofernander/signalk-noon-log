@@ -12,8 +12,8 @@ Semi-automatic logbook and vessel tracker
 - Web interface for log management
 
 ## Dependencies
-nodemailer
-sql.js
+- nodemailer
+- sql.js
 ## Installation
 Install via SignalK Appstore or:
 ```bash
