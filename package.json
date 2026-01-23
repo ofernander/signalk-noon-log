@@ -34,5 +34,5 @@
     "appIcon": "./assets/icons/signalk-noon-log-icon_72x72.gif",
     "displayName": "SignalK Noon Log"
   },
-  "signalk-plugin-enabled-by-default": false
+  "signalk-plugin-enabled-by-default": true
 }
