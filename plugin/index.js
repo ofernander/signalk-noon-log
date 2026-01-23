@@ -9,7 +9,7 @@ const DeltaPublisher = require('./lib/publisher');
 const PositionTracker = require('./lib/positionTracker');
 const FreeboardSync = require('./lib/freeboardSync');
 const registerRoutes = require('./lib/routes');
-const NoonReportHandler = require('./lib/noon-report-handler');
+const NoonReportHandler = require('./lib/noonReportHandler');
 
 module.exports = function (app) {
   let plugin = {
