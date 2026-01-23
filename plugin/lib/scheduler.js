@@ -85,12 +85,15 @@ class ReportScheduler {
     // Create today's first report time
     let nextReport = new Date(now);
     
-    if (this.options.useLocalTime) {
+    // Check timezone mode - 'gps' means UTC, 'fixed' means local/offset
+    const useGpsTime = (this.options.timezoneMode === 'gps' || this.options.timezoneMode === undefined);
+    
+    if (useGpsTime) {
+      // Use UTC time (GPS time)
+      nextReport.setUTCHours(hours, minutes, 0, 0);
+    } else {
       // Use local time
       nextReport.setHours(hours, minutes, 0, 0);
-    } else {
-      // Use UTC time
-      nextReport.setUTCHours(hours, minutes, 0, 0);
     }
 
     // If we've passed today's first report, add intervals until we find the next one

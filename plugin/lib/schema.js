@@ -1,6 +1,5 @@
 module.exports = {
   type: 'object',
-  required: ['noonTime'],
   properties: {
     reportInterval: {
       type: 'number',
@@ -58,6 +57,52 @@ module.exports = {
       default: 'navigation.position'
     },
 
+    // High-frequency position tracking
+    positionTracking: {
+      type: 'object',
+      title: 'Position Tracking Settings',
+      properties: {
+        enabled: {
+          type: 'boolean',
+          title: 'Enable Automatic Position Tracking',
+          default: false
+        },
+        interval: {
+          type: 'number',
+          title: 'Position Tracking Interval (minutes)',
+          default: 60,
+          minimum: 1,
+          maximum: 1440,
+          enum: [1, 5, 15, 30, 60, 120, 180, 240, 360, 720],
+          enumNames: [
+            '1 minute (testing)',
+            '5 minutes (very detailed)',
+            '15 minutes (detailed)',
+            '30 minutes (moderate)',
+            '1 hour (standard)',
+            '2 hours',
+            '3 hours',
+            '4 hours',
+            '6 hours',
+            '12 hours'
+          ]
+        }
+      }
+    },
+
+    // Freeboard-SK Integration
+    freeboardSync: {
+      type: 'object',
+      title: 'Freeboard-SK Integration',
+      properties: {
+        enabled: {
+          type: 'boolean',
+          title: 'Show Active Voyage Track in Freeboard-SK',
+          default: false
+        }
+      }
+    },
+
     // Custom data paths
     customDataPaths: {
       type: 'array',
@@ -93,11 +138,6 @@ module.exports = {
           type: 'boolean',
           title: 'Enable Email',
           default: false
-        },
-        recipients: {
-          type: 'string',
-          title: 'Recipients (comma-separated)',
-          default: ''
         },
         smtpHost: {
           type: 'string',

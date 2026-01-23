@@ -208,6 +208,32 @@ class DataCollector {
       }
     }
 
+    // Battery State of Charge (SignalK uses ratio 0-1)
+    if (path.includes('stateOfCharge') || path.includes('soc')) {
+      // Convert ratio to percentage
+      return { 
+        value: value * 100, 
+        unit: '%' 
+      };
+    }
+
+    // Battery Voltage (SignalK uses volts)
+    if (path.includes('voltage') || (path.includes('electrical') && path.includes('batteries'))) {
+      // Auto-detect if this looks like a percentage (0-1 range)
+      if (value >= 0 && value <= 1) {
+        // Likely a state of charge ratio, convert to percentage
+        return { 
+          value: value * 100, 
+          unit: '%' 
+        };
+      }
+      // Otherwise treat as voltage
+      return { 
+        value: value, 
+        unit: 'V' 
+      };
+    }
+
     // Default: no conversion
     return { value: value, unit: '' };
   }

@@ -9,10 +9,6 @@ class LogStorage {
     this.dbPath = path.join(dataDir, 'noon-log.db');
     this.db = null;
     this.SQL = null;
-    
-    // FIX #2: Debounced save mechanism
-    this.saveTimeout = null;
-    this.savePending = false;
   }
 
   async init() {
@@ -30,8 +26,24 @@ class LogStorage {
         this.app.debug('Created new noon log database');
       }
       
+      // Check if table has new columns - if not, recreate
+      const tableInfo = this.db.exec("PRAGMA table_info(log_entries)");
+      if (tableInfo.length > 0) {
+        const columns = tableInfo[0].values.map(row => row[1]);
+        const hasVoyageId = columns.includes('voyage_id');
+        const hasIsAutoTrack = columns.includes('is_auto_track');
+        
+        if (!hasVoyageId || !hasIsAutoTrack) {
+          // Drop and recreate tables with new schema
+          this.app.debug('Outdated schema detected, recreating tables...');
+          this.db.run('DROP TABLE IF EXISTS log_entries');
+          this.db.run('DROP TABLE IF EXISTS log_data');
+          this.db.run('DROP TABLE IF EXISTS distance_log');
+        }
+      }
+      
       this.createTables();
-      this.saveDatabase(); // Initial save is immediate
+      this.saveDatabase();
       this.app.debug('Noon log database initialized');
       return true;
     } catch (error) {
@@ -40,31 +52,15 @@ class LogStorage {
     }
   }
 
-  // Save database to disk (immediate)
+  // Save database to disk
   saveDatabase() {
     try {
-      if (this.saveTimeout) {
-        clearTimeout(this.saveTimeout);
-        this.saveTimeout = null;
-      }
       const data = this.db.export();
       const buffer = Buffer.from(data);
       fs.writeFileSync(this.dbPath, buffer);
-      this.savePending = false;
     } catch (error) {
       this.app.error('Failed to save database:', error);
     }
-  }
-
-  // FIX #2: Debounced save - waits 5 seconds after last change
-  debouncedSave() {
-    this.savePending = true;
-    if (this.saveTimeout) {
-      clearTimeout(this.saveTimeout);
-    }
-    this.saveTimeout = setTimeout(() => {
-      this.saveDatabase();
-    }, 5000); // 5 seconds
   }
 
   createTables() {
@@ -72,12 +68,14 @@ class LogStorage {
     this.db.run(`
       CREATE TABLE IF NOT EXISTS log_entries (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
+        voyage_id INTEGER,
         timestamp INTEGER NOT NULL,
         date_str TEXT NOT NULL,
         latitude REAL,
         longitude REAL,
         log_text TEXT,
         email_sent BOOLEAN DEFAULT 0,
+        is_auto_track BOOLEAN DEFAULT 0,
         created_at INTEGER DEFAULT (strftime('%s', 'now'))
       )
     `);
@@ -131,18 +129,24 @@ class LogStorage {
 
   // Create a new log entry
   createLogEntry(data) {
+    // Get current active voyage
+    const voyage = this.getActiveVoyage();
+    const voyageId = voyage ? voyage.id : null;
+
     const stmt = this.db.prepare(`
-      INSERT INTO log_entries (timestamp, date_str, latitude, longitude, log_text, email_sent)
-      VALUES (?, ?, ?, ?, ?, ?)
+      INSERT INTO log_entries (voyage_id, timestamp, date_str, latitude, longitude, log_text, email_sent, is_auto_track)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?)
     `);
 
     stmt.run([
+      voyageId,
       data.timestamp,
       data.dateStr,
       data.latitude || null,
       data.longitude || null,
       data.logText || null,
-      data.emailSent ? 1 : 0
+      data.emailSent ? 1 : 0,
+      data.isAutoTrack ? 1 : 0
     ]);
     
     stmt.free();
@@ -151,7 +155,7 @@ class LogStorage {
     const result = this.db.exec('SELECT last_insert_rowid() as id');
     const logId = result[0].values[0][0];
     
-    this.debouncedSave(); // FIX #2: Use debounced save
+    this.saveDatabase();
     return logId;
   }
 
@@ -164,7 +168,7 @@ class LogStorage {
 
     stmt.run([logId, dataPath, label, value || null, unit || null]);
     stmt.free();
-    this.debouncedSave(); // FIX #2: Use debounced save
+    this.saveDatabase();
   }
 
   // Add distance info to a log entry
@@ -176,7 +180,7 @@ class LogStorage {
 
     stmt.run([logId, distanceSinceLast, totalDistance]);
     stmt.free();
-    this.debouncedSave(); // FIX #2: Use debounced save
+    this.saveDatabase();
   }
 
   // Get all log entries
@@ -188,6 +192,90 @@ class LogStorage {
     if (result.length === 0) return [];
     
     return this.resultToObjects(result[0]);
+  }
+
+  /**
+   * Get log entry for a specific date
+   * @param {string} dateStr - Date string in YYYY-MM-DD format
+   * @returns {Object|null} Log entry with associated data, or null if not found
+   */
+  getLogByDate(dateStr) {
+    
+    // First, get the main log entry
+    // Prefer noon reports (is_auto_track = 0) over auto-track positions
+    const logResult = this.db.exec(`
+      SELECT * FROM log_entries 
+      WHERE date_str = ? 
+      ORDER BY is_auto_track ASC, timestamp DESC
+      LIMIT 1
+    `, [dateStr]);
+    
+    
+    if (logResult.length === 0 || logResult[0].values.length === 0) {
+      return null;
+    }
+    
+    const log = this.resultToObjects(logResult[0])[0];
+    
+    // Get associated environmental data
+    const dataResult = this.db.exec(`
+      SELECT * FROM log_data WHERE log_id = ?
+    `, [log.id]);
+    
+    if (dataResult.length > 0) {
+      log.data = this.resultToObjects(dataResult[0]);
+    } else {
+      log.data = [];
+    }
+    
+    // Get distance data (check both tables for backward compatibility)
+    let distResult = this.db.exec(`
+      SELECT * FROM log_distances WHERE log_id = ?
+    `, [log.id]);
+    
+    // Fallback to old table name if new one doesn't exist
+    if (distResult.length === 0) {
+      distResult = this.db.exec(`
+        SELECT * FROM distance_log WHERE log_id = ?
+      `, [log.id]);
+    }
+    
+    if (distResult.length > 0 && distResult[0].values.length > 0) {
+      const distData = this.resultToObjects(distResult[0])[0];
+      log.distance = {
+        distance_since_last: distData.distance_since_last,
+        total_distance: distData.total_distance
+      };
+    }
+    
+    return log;
+  }
+
+  /**
+   * Get all unique dates that have logs
+   * @returns {Array} Array of date strings with log info
+   */
+  getAllLogDates() {
+    
+    const result = this.db.exec(`
+      SELECT DISTINCT date_str, 
+             MIN(is_auto_track) as has_noon_report,
+             COUNT(*) as entry_count
+      FROM log_entries 
+      GROUP BY date_str
+      ORDER BY date_str DESC
+    `);
+    
+    
+    if (result.length === 0) {
+      return [];
+    }
+    
+    const dates = this.resultToObjects(result[0]);
+    if (dates.length > 0) {
+    }
+    
+    return dates;
   }
   
   // Helper to convert sql.js results to objects
@@ -204,49 +292,21 @@ class LogStorage {
     });
   }
 
-  // FIX #1: Helper method for single result queries (prevents SQL injection)
-  getSingleResult(query, params = []) {
-    const stmt = this.db.prepare(query);
-    if (params.length > 0) {
-      stmt.bind(params);
-    }
-    
-    let result = null;
-    if (stmt.step()) {
-      const columns = stmt.getColumnNames();
-      const values = stmt.get();
-      result = {};
-      columns.forEach((col, idx) => {
-        result[col] = values[idx];
-      });
-    }
-    stmt.free();
-    return result;
-  }
-
-  // Get log by ID with all associated data - FIX #1: Safe parameter binding
+  // Get log by ID with all associated data
   getLogById(logId) {
-    const log = this.getSingleResult('SELECT * FROM log_entries WHERE id = ?', [logId]);
+    const logResult = this.db.exec('SELECT * FROM log_entries WHERE id = ?', [logId]);
     
-    if (!log) return null;
+    if (logResult.length === 0 || logResult[0].values.length === 0) return null;
+    
+    const log = this.resultToObjects(logResult[0])[0];
 
-    // Get associated data
-    const dataStmt = this.db.prepare('SELECT * FROM log_data WHERE log_id = ?');
-    dataStmt.bind([logId]);
-    const data = [];
-    while (dataStmt.step()) {
-      const columns = dataStmt.getColumnNames();
-      const values = dataStmt.get();
-      const row = {};
-      columns.forEach((col, idx) => {
-        row[col] = values[idx];
-      });
-      data.push(row);
-    }
-    dataStmt.free();
+    const dataResult = this.db.exec('SELECT * FROM log_data WHERE log_id = ?', [logId]);
+    const data = dataResult.length > 0 ? this.resultToObjects(dataResult[0]) : [];
 
-    // Get distance data
-    const distance = this.getSingleResult('SELECT * FROM distance_log WHERE log_id = ?', [logId]);
+    const distResult = this.db.exec('SELECT * FROM distance_log WHERE log_id = ?', [logId]);
+    const distance = distResult.length > 0 && distResult[0].values.length > 0 
+      ? this.resultToObjects(distResult[0])[0] 
+      : null;
 
     return {
       ...log,
@@ -266,28 +326,17 @@ class LogStorage {
     return this.resultToObjects(result[0])[0];
   }
 
-  // Get logs within a date range - FIX #1: Safe parameter binding
+  // Get logs within a date range
   getLogsByDateRange(startDate, endDate) {
-    const stmt = this.db.prepare(`
+    const result = this.db.exec(`
       SELECT * FROM log_entries 
       WHERE date_str >= ? AND date_str <= ?
       ORDER BY timestamp ASC
-    `);
-    stmt.bind([startDate, endDate]);
+    `, [startDate, endDate]);
     
-    const logs = [];
-    while (stmt.step()) {
-      const columns = stmt.getColumnNames();
-      const values = stmt.get();
-      const row = {};
-      columns.forEach((col, idx) => {
-        row[col] = values[idx];
-      });
-      logs.push(row);
-    }
-    stmt.free();
+    if (result.length === 0) return [];
     
-    return logs;
+    return this.resultToObjects(result[0]);
   }
 
   // Update email sent status
@@ -297,7 +346,7 @@ class LogStorage {
     `);
     stmt.run([logId]);
     stmt.free();
-    this.debouncedSave(); // FIX #2: Use debounced save
+    this.saveDatabase();
   }
 
   // Voyage management
@@ -320,7 +369,7 @@ class LogStorage {
     stmt.run([name || `Voyage ${new Date().toISOString().split('T')[0]}`, timestamp]);
     stmt.free();
     
-    this.saveDatabase(); // Immediate save for voyage changes
+    this.saveDatabase();
     
     // Get the ID of the newly created voyage
     const result = this.db.exec('SELECT last_insert_rowid() as id');
@@ -329,7 +378,13 @@ class LogStorage {
 
   // Get active voyage
   getActiveVoyage() {
-    return this.getSingleResult('SELECT * FROM voyage_info WHERE is_active = 1 LIMIT 1');
+    const result = this.db.exec(`
+      SELECT * FROM voyage_info WHERE is_active = 1 LIMIT 1
+    `);
+    
+    if (result.length === 0 || result[0].values.length === 0) return null;
+    
+    return this.resultToObjects(result[0])[0];
   }
 
   // Get total distance for active voyage
@@ -347,15 +402,23 @@ class LogStorage {
     return result[0].values[0][0] || 0;
   }
 
-  // FIX #7: Consolidate redundant methods - getCurrentVoyage now uses getActiveVoyage
+  // Get current active voyage info
   getCurrentVoyage() {
-    const active = this.getActiveVoyage();
-    if (!active) {
-      return { name: 'Unnamed Voyage', startTimestamp: null };
+    const result = this.db.exec(`
+      SELECT id, voyage_name, start_timestamp
+      FROM voyage_info
+      WHERE is_active = 1
+    `);
+    
+    if (result.length === 0 || result[0].values.length === 0) {
+      return { id: null, name: 'Unnamed Voyage', startTimestamp: null };
     }
+    
+    const row = result[0].values[0];
     return {
-      name: active.voyage_name || 'Unnamed Voyage',
-      startTimestamp: active.start_timestamp
+      id: row[0],
+      name: row[1] || 'Unnamed Voyage',
+      startTimestamp: row[2]
     };
   }
 
@@ -394,65 +457,61 @@ class LogStorage {
     }));
   }
 
-  // Get logs for a specific voyage - FIX #1: Safe parameter binding
+  // Get logs for a specific voyage
   getLogsByVoyage(voyageId) {
-    const voyageInfo = this.getSingleResult(
-      'SELECT start_timestamp, is_active FROM voyage_info WHERE id = ?',
-      [voyageId]
-    );
+    const result = this.db.exec(`
+      SELECT v.start_timestamp, v.is_active
+      FROM voyage_info v
+      WHERE v.id = ?
+    `, [voyageId]);
     
-    if (!voyageInfo) return [];
+    if (result.length === 0) return [];
     
-    const startTimestamp = voyageInfo.start_timestamp;
-    const isActive = voyageInfo.is_active;
+    const voyage = result[0].values[0];
+    const startTimestamp = voyage[0];
+    const isActive = voyage[1];
     
     // Get end timestamp (start of next voyage, or null if active)
     let endTimestamp = null;
     if (!isActive) {
-      const nextVoyage = this.getSingleResult(
-        'SELECT start_timestamp FROM voyage_info WHERE id > ? ORDER BY id LIMIT 1',
-        [voyageId]
-      );
+      const nextResult = this.db.exec(`
+        SELECT start_timestamp 
+        FROM voyage_info 
+        WHERE id > ? 
+        ORDER BY id LIMIT 1
+      `, [voyageId]);
       
-      if (nextVoyage) {
-        endTimestamp = nextVoyage.start_timestamp;
+      if (nextResult.length > 0 && nextResult[0].values.length > 0) {
+        endTimestamp = nextResult[0].values[0][0];
       }
     }
     
     // Get logs for this voyage
-    let query = 'SELECT * FROM log_entries WHERE timestamp >= ?';
+    let query = `
+      SELECT * FROM log_entries 
+      WHERE timestamp >= ?
+    `;
     const params = [startTimestamp];
     
     if (endTimestamp) {
-      query += ' AND timestamp < ?';
+      query += ` AND timestamp < ?`;
       params.push(endTimestamp);
     }
     
-    query += ' ORDER BY timestamp DESC';
+    query += ` ORDER BY timestamp DESC`;
     
-    const stmt = this.db.prepare(query);
-    stmt.bind(params);
+    const logsResult = this.db.exec(query, params);
     
-    const logs = [];
-    while (stmt.step()) {
-      const columns = stmt.getColumnNames();
-      const values = stmt.get();
-      const row = {};
-      columns.forEach((col, idx) => {
-        row[col] = values[idx];
-      });
-      logs.push(this.getLogById(row.id));
-    }
-    stmt.free();
+    if (logsResult.length === 0) return [];
     
-    return logs;
+    return this.resultToObjects(logsResult[0]).map(log => this.getLogById(log.id));
   }
 
-  // FIX #4: Delete voyage with optimized batch queries
+  // Delete voyage and all associated logs
   deleteVoyage(voyageId) {
     // Don't allow deleting active voyage
-    const voyage = this.getSingleResult('SELECT is_active FROM voyage_info WHERE id = ?', [voyageId]);
-    if (voyage && voyage.is_active === 1) {
+    const voyageCheck = this.db.exec(`SELECT is_active FROM voyage_info WHERE id = ?`, [voyageId]);
+    if (voyageCheck.length > 0 && voyageCheck[0].values[0][0] === 1) {
       throw new Error('Cannot delete active voyage');
     }
     
@@ -460,21 +519,25 @@ class LogStorage {
     const logs = this.getLogsByVoyage(voyageId);
     const logIds = logs.map(log => log.id);
     
-    if (logIds.length > 0) {
-      // FIX #4: Use batch delete with IN clause instead of loops
-      const placeholders = logIds.map(() => '?').join(',');
-      
-      this.db.run(`DELETE FROM distance_log WHERE log_id IN (${placeholders})`, logIds);
-      this.db.run(`DELETE FROM log_data WHERE log_id IN (${placeholders})`, logIds);
-      this.db.run(`DELETE FROM log_entries WHERE id IN (${placeholders})`, logIds);
+    // Delete distance data
+    for (const logId of logIds) {
+      this.db.run(`DELETE FROM distance_log WHERE log_id = ?`, [logId]);
+    }
+    
+    // Delete log data
+    for (const logId of logIds) {
+      this.db.run(`DELETE FROM log_data WHERE log_id = ?`, [logId]);
+    }
+    
+    // Delete log entries
+    for (const logId of logIds) {
+      this.db.run(`DELETE FROM log_entries WHERE id = ?`, [logId]);
     }
     
     // Delete voyage
-    const stmt = this.db.prepare('DELETE FROM voyage_info WHERE id = ?');
-    stmt.run([voyageId]);
-    stmt.free();
+    this.db.run(`DELETE FROM voyage_info WHERE id = ?`, [voyageId]);
     
-    this.saveDatabase(); // Immediate save for voyage deletion
+    this.saveDatabase();
     
     return {
       success: true,
@@ -483,13 +546,10 @@ class LogStorage {
     };
   }
 
-  // Rename voyage - FIX #1: Safe parameter binding
+  // Rename voyage
   renameVoyage(voyageId, newName) {
-    const stmt = this.db.prepare('UPDATE voyage_info SET voyage_name = ? WHERE id = ?');
-    stmt.run([newName, voyageId]);
-    stmt.free();
-    
-    this.debouncedSave(); // FIX #2: Use debounced save
+    this.db.run(`UPDATE voyage_info SET voyage_name = ? WHERE id = ?`, [newName, voyageId]);
+    this.saveDatabase();
     
     return {
       success: true,
@@ -511,18 +571,28 @@ class LogStorage {
     return logs.map(log => this.getLogById(log.id));
   }
 
+  /**
+   * Get count of auto-tracked positions for current voyage
+   * @returns {number} Count of position entries
+   */
+  getPositionTrackCount() {
+    const voyage = this.getActiveVoyage();
+    if (!voyage) return 0;
+
+    const result = this.db.exec(`
+      SELECT COUNT(*) as count
+      FROM log_entries
+      WHERE voyage_id = ? AND is_auto_track = 1
+    `, [voyage.id]);
+
+    if (result.length === 0 || result[0].values.length === 0) {
+      return 0;
+    }
+
+    return result[0].values[0][0];
+  }
+
   close() {
-    // FIX #2: Clear any pending save timeout
-    if (this.saveTimeout) {
-      clearTimeout(this.saveTimeout);
-      this.saveTimeout = null;
-    }
-    
-    // Save any pending changes before closing
-    if (this.savePending) {
-      this.saveDatabase();
-    }
-    
     if (this.db) {
       this.db.close();
     }

@@ -568,3 +568,109 @@ body {
 .delete-voyage-btn:hover {
     background: #c82333;
 }
+
+/* ===================================
+   Email Management Styles
+   =================================== */
+
+.email-add-section {
+    margin-bottom: 20px;
+}
+
+.email-list-container {
+    margin-top: 10px;
+}
+
+.email-list {
+    max-height: 400px;
+    overflow-y: auto;
+    border: 1px solid var(--border-color);
+    border-radius: 6px;
+    background: #f9fafb;
+    padding: 10px;
+}
+
+.email-list:empty {
+    min-height: 60px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.email-list .empty-state {
+    text-align: center;
+    color: var(--text-secondary);
+    padding: 20px;
+    font-style: italic;
+}
+
+.email-item {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 12px 15px;
+    margin-bottom: 8px;
+    background: white;
+    border: 1px solid var(--border-color);
+    border-radius: 6px;
+    transition: all 0.2s;
+}
+
+.email-item:last-child {
+    margin-bottom: 0;
+}
+
+.email-item:hover {
+    border-color: var(--primary-color);
+    box-shadow: 0 2px 4px rgba(44, 82, 130, 0.1);
+}
+
+.email-address {
+    font-family: 'Courier New', monospace;
+    color: var(--text-primary);
+    font-size: 14px;
+    flex: 1;
+    word-break: break-all;
+}
+
+.email-remove-btn {
+    background: transparent;
+    border: 1px solid var(--danger-color);
+    color: var(--danger-color);
+    padding: 6px 12px;
+    border-radius: 4px;
+    cursor: pointer;
+    font-size: 12px;
+    font-weight: 500;
+    transition: all 0.2s;
+    white-space: nowrap;
+    margin-left: 10px;
+}
+
+.email-remove-btn:hover {
+    background: var(--danger-color);
+    color: white;
+}
+
+.email-remove-btn:active {
+    transform: scale(0.95);
+}
+
+/* Scrollbar styling for email list */
+.email-list::-webkit-scrollbar {
+    width: 8px;
+}
+
+.email-list::-webkit-scrollbar-track {
+    background: #e2e8f0;
+    border-radius: 4px;
+}
+
+.email-list::-webkit-scrollbar-thumb {
+    background: #cbd5e0;
+    border-radius: 4px;
+}
+
+.email-list::-webkit-scrollbar-thumb:hover {
+    background: #a0aec0;
+}

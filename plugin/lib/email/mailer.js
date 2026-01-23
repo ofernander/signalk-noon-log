@@ -83,18 +83,16 @@ class Mailer {
 
     const emailConfig = this.options.emailSettings;
 
-    if (!emailConfig.recipients || emailConfig.recipients.trim() === '') {
-      return { 
-        success: false, 
-        error: 'No recipients configured' 
-      };
+    // Handle both array format (new) and comma-separated string (legacy)
+    let recipients = [];
+    if (Array.isArray(emailConfig.recipients)) {
+      recipients = emailConfig.recipients.filter(email => email && email.trim().length > 0);
+    } else if (typeof emailConfig.recipients === 'string' && emailConfig.recipients.trim() !== '') {
+      recipients = emailConfig.recipients
+        .split(',')
+        .map(email => email.trim())
+        .filter(email => email.length > 0);
     }
-
-    // Parse recipients
-    const recipients = emailConfig.recipients
-      .split(',')
-      .map(email => email.trim())
-      .filter(email => email.length > 0);
 
     if (recipients.length === 0) {
       return { 

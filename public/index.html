@@ -5,6 +5,93 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>SignalK Noon Log</title>
     <link rel="stylesheet" href="/signalk-noon-log/css/core.css">
+    <style>
+        /* Pending log feature styles */
+        .pending-log-section {
+            background-color: #fff3cd;
+            border: 2px dashed #ffc107;
+            border-radius: 8px;
+            padding: 15px;
+            margin-bottom: 20px;
+        }
+        
+        .pending-log-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 10px;
+        }
+        
+        .pending-log-title {
+            font-weight: 600;
+            color: #856404;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+        
+        .pending-log-badge {
+            background-color: #ffc107;
+            color: #000;
+            padding: 2px 8px;
+            border-radius: 12px;
+            font-size: 0.75rem;
+            font-weight: 600;
+        }
+        
+        .pending-log-text {
+            background-color: white;
+            padding: 12px;
+            border-radius: 4px;
+            white-space: pre-wrap;
+            word-wrap: break-word;
+            font-family: inherit;
+            line-height: 1.5;
+            max-height: 200px;
+            overflow-y: auto;
+        }
+        
+        .pending-log-empty {
+            color: #856404;
+            font-style: italic;
+            text-align: center;
+            padding: 10px;
+        }
+        
+        .pending-log-actions {
+            display: flex;
+            gap: 10px;
+            margin-top: 10px;
+        }
+        
+        .btn-edit-pending {
+            background-color: #ffc107;
+            color: #000;
+            border: none;
+            padding: 8px 16px;
+            border-radius: 4px;
+            cursor: pointer;
+            font-weight: 500;
+        }
+        
+        .btn-edit-pending:hover {
+            background-color: #e0a800;
+        }
+        
+        .btn-clear-pending {
+            background-color: #dc3545;
+            color: white;
+            border: none;
+            padding: 8px 16px;
+            border-radius: 4px;
+            cursor: pointer;
+            font-weight: 500;
+        }
+        
+        .btn-clear-pending:hover {
+            background-color: #c82333;
+        }
+    </style>
 </head>
 <body>
     <div class="container">
@@ -45,6 +132,10 @@
                             <div class="info-label">Total Distance</div>
                             <div class="info-value" id="totalDistance">-- nm</div>
                         </div>
+                        <div class="info-item" id="positionTrackingStatus" style="display: none;">
+                            <div class="info-label">📍 Position Tracking</div>
+                            <div class="info-value" id="positionsTracked">-- positions</div>
+                        </div>
                     </div>
                 </div>
             </div>
@@ -84,14 +175,97 @@
                 </div>
             </div>
 
-            <!-- Last Report Card -->
+            <!-- Pending Log Card -->
+            <div class="card" id="pendingLogCard" style="display: none;">
+                <div class="card-header">
+                    <h2>📝 Pending Log Entry</h2>
+                    <div class="card-subtitle">Will be included in the next scheduled report</div>
+                </div>
+                <div class="card-body">
+                    <div class="pending-log-section">
+                        <div class="pending-log-header">
+                            <div class="pending-log-title">
+                                <span class="pending-log-badge">DRAFT</span>
+                            </div>
+                        </div>
+                        <div class="pending-log-text" id="pendingLogText">
+                            <div class="pending-log-empty">No pending log entry</div>
+                        </div>
+                        <div class="pending-log-actions" id="pendingLogActions" style="display: none;">
+                            <button class="btn-edit-pending" id="editPendingBtn">
+                                ✏️ Edit / Add More
+                            </button>
+                            <button class="btn-clear-pending" id="clearPendingBtn">
+                                🗑️ Clear
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Log Viewer Card -->
             <div class="card">
                 <div class="card-header">
-                    <h2>Last Report</h2>
+                    <h2>📖 Voyage Logs</h2>
+                    <div class="card-subtitle">Browse log entries for current voyage</div>
                 </div>
-                <div class="card-body" id="lastReportContent">
-                    <div class="empty-state">
-                        <p>No reports yet</p>
+                <div class="card-body">
+                    <div style="display: grid; grid-template-columns: 280px 1fr; gap: 20px;">
+                        <!-- Left: Log List -->
+                        <div style="border-right: 1px solid #dee2e6; padding-right: 20px;">
+                            <div style="margin-bottom: 10px; font-weight: 500; color: #495057; font-size: 0.9rem;">
+                                <span id="logListCount">All Logs</span>
+                            </div>
+                            <div id="voyageLogsList" style="max-height: 500px; overflow-y: auto;">
+                                <div style="text-align: center; padding: 20px; color: #6c757d;">
+                                    Loading...
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Right: Log Display -->
+                        <div>
+                            <div id="logViewerPlaceholder" style="text-align: center; padding: 60px 20px; color: #6c757d;">
+                                <div style="font-size: 3rem; margin-bottom: 10px;">📖</div>
+                                <div style="font-size: 1.1rem;">Select a log to view details</div>
+                            </div>
+
+                            <div id="logViewerResult" style="display: none;">
+                                <div style="background-color: #f8f9fa; padding: 15px; border-radius: 8px; border: 1px solid #dee2e6;">
+                                    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 15px; padding-bottom: 10px; border-bottom: 2px solid #dee2e6;">
+                                        <h3 style="margin: 0; font-size: 1.1rem;" id="logViewerDateDisplay"></h3>
+                                        <span id="logViewerType" style="padding: 4px 12px; background-color: #007bff; color: white; border-radius: 12px; font-size: 0.875rem; font-weight: 500;"></span>
+                                    </div>
+
+                                    <!-- Log Text -->
+                                    <div id="logViewerTextSection" style="display: none; margin-bottom: 20px;">
+                                        <h4 style="margin: 0 0 10px 0; font-size: 0.95rem; color: #495057;">Captain's Log</h4>
+                                        <div id="logViewerText" style="white-space: pre-wrap; padding: 12px; background-color: white; border-radius: 4px; border: 1px solid #dee2e6; line-height: 1.6;"></div>
+                                    </div>
+
+                                    <!-- Weather/Environmental Data -->
+                                    <div id="logViewerDataSection" style="display: none;">
+                                        <h4 style="margin: 0 0 10px 0; font-size: 0.95rem; color: #495057;">Environmental Data</h4>
+                                        <div id="logViewerData" style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 10px;"></div>
+                                    </div>
+
+                                    <!-- Distance Info -->
+                                    <div id="logViewerDistanceSection" style="display: none; margin-top: 20px;">
+                                        <h4 style="margin: 0 0 10px 0; font-size: 0.95rem; color: #495057;">Distance</h4>
+                                        <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 10px;">
+                                            <div style="background-color: white; padding: 10px; border-radius: 4px; border: 1px solid #dee2e6;">
+                                                <div style="font-size: 0.8rem; color: #6c757d; margin-bottom: 4px;">Since Last Report</div>
+                                                <div id="logViewerDistLast" style="font-weight: 500;">--</div>
+                                            </div>
+                                            <div style="background-color: white; padding: 10px; border-radius: 4px; border: 1px solid #dee2e6;">
+                                                <div style="font-size: 0.8rem; color: #6c757d; margin-bottom: 4px;">Total Voyage</div>
+                                                <div id="logViewerDistTotal" style="font-weight: 500;">--</div>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
                     </div>
                 </div>
             </div>
@@ -118,12 +292,50 @@
                         <button class="btn btn-secondary" id="viewHistoryBtn">
                             📋 View History
                         </button>
-                        <button class="btn btn-secondary" id="createNewVoyageBtn">
-                            ➕ Create New Voyage
+                        <button class="btn btn-secondary" id="resetVoyageBtn">
+                            🔄 Reset Trip Log
                         </button>
                         <button class="btn btn-warning" id="sendNowBtn">
                             📤 Send Log Now
                         </button>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Email Recipients Card -->
+            <div class="card">
+                <div class="card-header">
+                    <h2>📧 Email Recipients</h2>
+                    <div class="card-subtitle">Manage who receives your noon log reports</div>
+                </div>
+                <div class="card-body">
+                    <!-- Add Email Form -->
+                    <div class="email-add-section">
+                        <form id="addEmailForm">
+                            <div style="display: flex; gap: 10px;">
+                                <input 
+                                    type="email" 
+                                    id="newEmailInput" 
+                                    class="input-field" 
+                                    placeholder="Enter email address"
+                                    style="flex: 1;"
+                                    required
+                                >
+                                <button type="submit" class="btn btn-primary">
+                                    ➕ Add
+                                </button>
+                            </div>
+                        </form>
+                    </div>
+
+                    <!-- Email List -->
+                    <div class="email-list-container">
+                        <div id="emailListHeader" style="display: none; margin: 15px 0 10px 0; font-weight: 600; color: #666;">
+                            Recipients (<span id="emailCount">0</span>):
+                        </div>
+                        <div id="emailList" class="email-list">
+                            <div class="loading">Loading recipients...</div>
+                        </div>
                     </div>
                 </div>
             </div>
@@ -162,6 +374,10 @@
         </footer>
     </div>
 
+    <!-- Load JavaScript files in correct order -->
+    <!-- Component classes must load before main.js -->
+    <script src="/signalk-noon-log/js/ws.js"></script>
+    <script src="/signalk-noon-log/js/ui.js"></script>
     <script src="/signalk-noon-log/js/voyages.js"></script>
     <script src="/signalk-noon-log/js/main.js"></script>
 </body>

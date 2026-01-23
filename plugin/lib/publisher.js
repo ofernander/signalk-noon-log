@@ -66,6 +66,13 @@ class DeltaPublisher {
         path: 'navigation.log.reportsSent',
         value: reportsSent
       });
+
+      // Position track count for current voyage
+      const positionCount = this.plugin.storage.getPositionTrackCount();
+      deltas.push({
+        path: 'navigation.log.positionsTracked',
+        value: positionCount
+      });
     }
 
     // Send deltas to SignalK
@@ -130,26 +137,30 @@ class DeltaPublisher {
         path: 'navigation.log.voyageName',
         value: voyage.name
       });
+
+      // Position track count for current voyage
+      const positionCount = this.plugin.storage.getPositionTrackCount();
+      deltas.push({
+        path: 'navigation.log.positionsTracked',
+        value: positionCount
+      });
     }
 
     this.sendDeltas(deltas);
   }
 
   /**
-   * Publish pending log entry (before noon)
+   * Publish pending log entry status (before noon)
+   * Pass true/false or the log text - we'll convert to boolean
    */
   publishPendingLog(logText) {
-    const deltas = [];
-
-    if (logText) {
-      deltas.push({
-        path: 'navigation.log.pendingEntry',
-        value: logText
-      });
-    }
+    const deltas = [{
+      path: 'navigation.log.pendingEntry',
+      value: logText ? true : false
+    }];
 
     this.sendDeltas(deltas);
-    this.app.debug('Published pending log entry to SignalK');
+    this.app.debug(`Published pending log status to SignalK: ${logText ? 'pending' : 'cleared'}`);
   }
 
   /**
@@ -171,6 +182,10 @@ class DeltaPublisher {
       {
         path: 'navigation.log.voyageName',
         value: voyage.name
+      },
+      {
+        path: 'navigation.log.positionsTracked',
+        value: 0
       }
     ];
 
