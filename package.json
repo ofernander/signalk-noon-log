@@ -1,6 +1,6 @@
 {
   "name": "signalk-noon-log",
-  "version": "0.1.1",
+  "version": "0.1.2",
   "description": "Semi-automatic logbook and vessel tracker",
   "main": "plugin/index.js",
   "scripts": {
