@@ -31,7 +31,7 @@
     "sql.js": "^1.10.0"
   },
   "signalk": {
-    "appIcon": "./assets/icons/signalk-noon-log-icon_72x72.gif",
+    "appIcon": "./assets/icons/signalk-noon-log-icon_72x72.png",
     "displayName": "SignalK Noon Log"
   },
   "signalk-plugin-enabled-by-default": true
