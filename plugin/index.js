@@ -14,7 +14,7 @@ const NoonReportHandler = require('./lib/noonReportHandler');
 module.exports = function (app) {
   let plugin = {
     id: 'signalk-noon-log',
-    name: 'signalk-noon-log',
+    name: 'Signalk-Noon-Log',
     description: 'Semi-automatic logbook and vessel tracker - creates daily noon position reports with weather data, distances, and custom log entries',
     
     schema: schema,
