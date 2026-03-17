@@ -398,8 +398,13 @@ class UIController {
                 hour: '2-digit',
                 minute: '2-digit'
             });
+            document.getElementById('nextNoonDate').textContent =
+                this.app.state.timeUntilNoon.nextNoon.toLocaleDateString('en-US', {
+                    weekday: 'short', month: 'short', day: 'numeric'
+                });
         } else {
             nextNoonEl.textContent = '--:--';
+            document.getElementById('nextNoonDate').textContent = '--';
         }
     }
 

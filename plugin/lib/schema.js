@@ -90,19 +90,6 @@ module.exports = {
       }
     },
 
-    // Freeboard-SK Integration
-    freeboardSync: {
-      type: 'object',
-      title: 'Freeboard-SK Integration',
-      properties: {
-        enabled: {
-          type: 'boolean',
-          title: 'Show Active Voyage Track in Freeboard-SK',
-          default: false
-        }
-      }
-    },
-
     // Custom data paths
     customDataPaths: {
       type: 'array',

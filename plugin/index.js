@@ -179,8 +179,8 @@ module.exports = function (app) {
         app.debug('[startScheduler] position tracking disabled in config - skipping');
       }
 
-      // Start Freeboard-SK sync now that GPS data is confirmed available
-      if (plugin.options.freeboardSync?.enabled && plugin.options.positionTracking?.enabled) {
+      // Freeboard-SK sync automatically enabled when position tracking is on
+      if (plugin.options.positionTracking?.enabled) {
         plugin.freeboardSync.start();
         app.debug('Freeboard-SK sync started');
       }

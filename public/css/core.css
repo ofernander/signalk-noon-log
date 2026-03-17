@@ -109,6 +109,7 @@ body.night-mode .email-remove-btn:hover {
 .voyage-log-item:hover { background-color: var(--background); }
 .voyage-log-item.selected { background-color: var(--background); border-left: 3px solid var(--primary-color); }
 .voyage-active-tag { color: var(--success-color); }
+.info-sub { font-size: 0.75rem; color: var(--text-secondary); margin-top: 2px; }
 .log-position-badge { padding: 4px 12px; color: white; border-radius: 12px; font-size: 0.875rem; font-weight: 500; }
 .log-position-badge--found { background-color: var(--success-color); }
 .log-position-badge--missing { background-color: var(--text-secondary); }
