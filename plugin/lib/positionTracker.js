@@ -19,16 +19,17 @@ class PositionTracker {
    */
   start() {
     if (!this.options.positionTracking?.enabled) {
-      this.app.debug('Position tracking not enabled');
+      this.app.debug('[PositionTracker] not enabled in options');
       return;
     }
 
     const intervalMinutes = this.options.positionTracking.interval || 60;
     const intervalMs = intervalMinutes * 60 * 1000;
 
-    this.app.debug(`Starting position tracker with ${intervalMinutes} minute interval`);
+    this.app.debug(`[PositionTracker] starting with ${intervalMinutes} minute interval`);
 
     // Track immediately
+    this.app.debug('[PositionTracker] calling recordPosition() immediately on start');
     this.recordPosition();
 
     // Then track at intervals
@@ -55,15 +56,17 @@ class PositionTracker {
     try {
       // Get current position
       const noonData = this.dataCollector.collectNoonData();
+
+      this.app.debug(`[PositionTracker.recordPosition] position=${JSON.stringify(noonData.position)}`);
       
       if (!noonData.position || !noonData.position.latitude) {
-        this.app.debug('Position tracker: No position data available');
+        this.app.debug('[PositionTracker.recordPosition] no position data, skipping');
         return;
       }
 
       // Check if position has changed significantly (optional optimization)
       if (this.shouldSkipPosition(noonData.position)) {
-        this.app.debug('Position tracker: Position unchanged, skipping');
+        this.app.debug('[PositionTracker.recordPosition] position unchanged, skipping');
         return;
       }
 

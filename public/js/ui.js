@@ -28,7 +28,7 @@ class UIController {
             this.showHistory();
         });
 
-        // Reset voyage button
+        // New voyage button
         document.getElementById('resetVoyageBtn').addEventListener('click', () => {
             this.resetVoyage();
         });
@@ -103,6 +103,7 @@ class UIController {
             if (result.success) {
                 this.showMessage('success', 'Log entry saved! It will be included in the next noon report.');
                 document.getElementById('logText').value = '';
+                this.loadVoyageLogs();
             } else {
                 this.showMessage('error', `Error: ${result.error || 'Unknown error'}`);
             }
@@ -179,11 +180,11 @@ class UIController {
      * Reset voyage (create new voyage)
      */
     async resetVoyage() {
-        if (!confirm('Are you sure you want to reset the trip log? This will start distance tracking from zero.')) {
+        if (!confirm('Start a new voyage? This will archive the current voyage and reset distance tracking.')) {
             return;
         }
 
-        const voyageName = prompt('Enter a name for the new voyage (optional):');
+        const voyageName = prompt('Enter a name for the new voyage:');
         
         try {
             const response = await fetch('/plugins/signalk-noon-log/api/resetVoyage', {
@@ -195,9 +196,9 @@ class UIController {
             const result = await response.json();
 
             if (result.success) {
-                this.showMessage('success', 'Trip log has been reset');
-                // Reload voyage data
-                await this.app.loadInitialData();
+                this.showMessage('success', 'New voyage started');
+                window.voyageManager?.loadVoyages();
+                this.loadVoyageLogs();
             } else {
                 this.showMessage('error', `Error: ${result.error}`);
             }
@@ -248,6 +249,7 @@ class UIController {
 
             if (result.success) {
                 this.showMessage('success', 'Log sent successfully!');
+                this.loadVoyageLogs();
             } else {
                 this.showMessage('error', `Error: ${result.error}`);
             }

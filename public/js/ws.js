@@ -92,6 +92,11 @@ class WebSocketManager {
                 } else if (path === 'navigation.log') {
                     // Full log entry update
                     this.app.state.lastLog = value;
+                } else if (path === 'navigation.log.voyageListUpdated') {
+                    window.voyageManager?.loadVoyages();
+                    this.app.ui.loadVoyageLogs();
+                } else if (path === 'navigation.log.logListUpdated') {
+                    this.app.ui.loadVoyageLogs();
                 }
 
                 // Trigger UI update

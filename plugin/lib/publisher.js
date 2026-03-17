@@ -164,6 +164,20 @@ class DeltaPublisher {
   }
 
   /**
+   * Publish signal that voyage list has changed (delete, new voyage)
+   */
+  publishVoyageListUpdated() {
+    this.sendDeltas([{ path: 'navigation.log.voyageListUpdated', value: Date.now() }]);
+  }
+
+  /**
+   * Publish signal that log list has changed (submit log, send now)
+   */
+  publishLogListUpdated() {
+    this.sendDeltas([{ path: 'navigation.log.logListUpdated', value: Date.now() }]);
+  }
+
+  /**
    * Publish voyage reset (distance back to 0)
    */
   publishVoyageReset() {

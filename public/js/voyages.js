@@ -142,12 +142,7 @@ class VoyageManager {
 
     // Export voyage
     async exportVoyage(voyageId, format) {
-        let url;
-        if (format === 'logbook') {
-            url = `/plugins/signalk-noon-log/api/voyages/${voyageId}/export-logbook`;
-        } else if (format === 'gpx') {
-            url = `/plugins/signalk-noon-log/api/voyages/${voyageId}/export-gpx`;
-        } else if (format === 'json') {
+        if (format === 'json') {
             // Get voyage data and download as JSON
             try {
                 const response = await fetch(`/plugins/signalk-noon-log/api/voyages/${voyageId}`);
@@ -165,9 +160,28 @@ class VoyageManager {
                 return;
             }
         }
-        
-        // For logbook and GPX, just open the URL (browser will download)
-        window.open(url, '_blank');
+
+        // For logbook and GPX, fetch as blob - same pattern as JSON export
+        try {
+            const isGpx = format === 'gpx';
+            const url = isGpx
+                ? `/plugins/signalk-noon-log/api/voyages/${voyageId}/export-gpx`
+                : `/plugins/signalk-noon-log/api/voyages/${voyageId}/export-logbook`;
+            const extension = isGpx ? 'gpx' : 'txt';
+
+            const response = await fetch(url);
+            const blob = await response.blob();
+            const downloadUrl = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = downloadUrl;
+            a.download = `voyage_${voyageId}.${extension}`;
+            document.body.appendChild(a);
+            a.click();
+            document.body.removeChild(a);
+            URL.revokeObjectURL(downloadUrl);
+        } catch (error) {
+            this.mainUI.showMessage('error', `Export failed: ${error.message}`);
+        }
     }
 
     // Delete voyage
@@ -184,9 +198,9 @@ class VoyageManager {
             const result = await response.json();
             
             if (result.success) {
-                this.mainUI.showMessage('success', `Voyage deleted (${result.data.deletedLogs} logs removed)`);
                 document.getElementById('voyageModal').style.display = 'none';
                 this.loadVoyages();
+                this.mainUI.ui?.loadVoyageLogs();
             } else {
                 this.mainUI.showMessage('error', `Error: ${result.error}`);
             }

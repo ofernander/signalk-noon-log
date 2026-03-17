@@ -126,6 +126,7 @@ function submitLog(req, res, app, plugin) {
     // Publish pending log entry to SignalK
     if (plugin.publisher) {
       plugin.publisher.publishPendingLog(logText);
+      plugin.publisher.publishLogListUpdated();
     }
     
     app.debug('Log entry submitted:', logText ? 'with text' : 'empty/cleared');
@@ -237,6 +238,10 @@ async function sendNow(req, res, app, plugin) {
     
     // Trigger report immediately
     plugin.scheduler.manualTrigger();
+
+    if (plugin.publisher) {
+      plugin.publisher.publishLogListUpdated();
+    }
     
     sendSuccess(res, { message: 'Report sent' });
     
@@ -334,6 +339,10 @@ function deleteVoyage(req, res, app, plugin) {
         app.error(`Failed to delete Freeboard-SK resources for voyage ${validation.id}:`, err);
       });
     }
+
+    if (plugin.publisher) {
+      plugin.publisher.publishVoyageListUpdated();
+    }
     
     sendSuccess(res, result);
     
@@ -401,6 +410,8 @@ function resetVoyage(req, res, app, plugin) {
     // Publish voyage reset
     if (plugin.publisher) {
       plugin.publisher.publishVoyageReset();
+      plugin.publisher.publishVoyageListUpdated();
+      plugin.publisher.publishLogListUpdated();
     }
     
     sendSuccess(res, result);

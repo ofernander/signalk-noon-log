@@ -77,19 +77,11 @@ module.exports = function (app) {
           plugin.mailer.init();
         }
 
-        // Initialize position tracker if enabled
+        // Initialize position tracker (start deferred until position is available)
         plugin.positionTracker = new PositionTracker(app, plugin, plugin.storage, plugin.dataCollector, options);
-        if (options.positionTracking?.enabled) {
-          plugin.positionTracker.start();
-          app.debug('Position tracker started');
-        }
 
-        // Initialize Freeboard-SK sync if enabled
+        // Initialize Freeboard-SK sync (start deferred until position is available)
         plugin.freeboardSync = new FreeboardSync(app, plugin, plugin.storage);
-        if (options.freeboardSync?.enabled && options.positionTracking?.enabled) {
-          plugin.freeboardSync.start();
-          app.debug('Freeboard-SK sync started');
-        }
 
         // Wait for position data before starting scheduler
         await plugin.waitForPosition();
@@ -142,15 +134,20 @@ module.exports = function (app) {
       const positionCheckInterval = setInterval(() => {
         positionCheckCount++;
         
-        const position = plugin.dataCollector.collectNoonData().position;
+        const noonData = plugin.dataCollector.collectNoonData();
+        const position = noonData.position;
+
+        app.debug(`[waitForPosition] check #${positionCheckCount}: position=${JSON.stringify(position)}`);
         
         if (position && position.latitude) {
           // Position available - start scheduler
+          app.debug(`[waitForPosition] position confirmed at check #${positionCheckCount}, starting scheduler`);
           clearInterval(positionCheckInterval);
           plugin.startScheduler();
           
         } else if (positionCheckCount >= maxPositionChecks) {
           // Timeout - start anyway but warn
+          app.debug(`[waitForPosition] timeout after ${positionCheckCount} checks, starting scheduler without position`);
           clearInterval(positionCheckInterval);
           plugin.startScheduler();
           
@@ -164,13 +161,30 @@ module.exports = function (app) {
      * Start the scheduler once position is available
      */
     startScheduler: function () {
+      app.debug(`[startScheduler] positionTracking.enabled=${plugin.options.positionTracking?.enabled}`);
+
       plugin.scheduler = new ReportScheduler(
         app, 
         plugin.options, 
         plugin.noonReportHandler.handleNoonReport.bind(plugin.noonReportHandler)
       );
       plugin.scheduler.start();
-      
+
+      // Start position tracker now that GPS data is confirmed available
+      if (plugin.options.positionTracking?.enabled) {
+        app.debug('[startScheduler] starting position tracker');
+        plugin.positionTracker.start();
+        app.debug('Position tracker started (position confirmed)');
+      } else {
+        app.debug('[startScheduler] position tracking disabled in config - skipping');
+      }
+
+      // Start Freeboard-SK sync now that GPS data is confirmed available
+      if (plugin.options.freeboardSync?.enabled && plugin.options.positionTracking?.enabled) {
+        plugin.freeboardSync.start();
+        app.debug('Freeboard-SK sync started');
+      }
+
       // Publish initial status to SignalK
       if (plugin.publisher) {
         plugin.publisher.publishStatus();
