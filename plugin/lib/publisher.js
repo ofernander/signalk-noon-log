@@ -113,12 +113,17 @@ class DeltaPublisher {
       }
     }
 
-    // Total voyage distance
+    // Total voyage distance and 24h distance
     if (this.plugin.distanceCalculator && this.plugin.storage) {
       const totalDistance = this.plugin.distanceCalculator.getTotalVoyageDistance();
       deltas.push({
         path: 'navigation.log.distance.total',
         value: totalDistance
+      });
+      const distance24h = this.plugin.distanceCalculator.getDistance24h();
+      deltas.push({
+        path: 'navigation.log.distance.24h',
+        value: distance24h
       });
     }
 
@@ -178,6 +183,20 @@ class DeltaPublisher {
   }
 
   /**
+   * Publish state reset when no active voyage exists after deletion
+   */
+  publishVoyageDeleted() {
+    this.sendDeltas([
+      { path: 'navigation.log.distance.total', value: 0 },
+      { path: 'navigation.log.distance.sinceLast', value: 0 },
+      { path: 'navigation.log.distance.24h', value: 0 },
+      { path: 'navigation.log.voyageName', value: '--' },
+      { path: 'navigation.log.positionsTracked', value: 0 },
+      { path: 'navigation.log.voyageListUpdated', value: Date.now() }
+    ]);
+  }
+
+  /**
    * Publish voyage reset (distance back to 0)
    */
   publishVoyageReset() {
@@ -185,22 +204,11 @@ class DeltaPublisher {
     const voyage = this.plugin.storage.getCurrentVoyage();
     
     const deltas = [
-      {
-        path: 'navigation.log.distance.total',
-        value: 0
-      },
-      {
-        path: 'navigation.log.distance.sinceLast',
-        value: 0
-      },
-      {
-        path: 'navigation.log.voyageName',
-        value: voyage.name
-      },
-      {
-        path: 'navigation.log.positionsTracked',
-        value: 0
-      }
+      { path: 'navigation.log.distance.total', value: 0 },
+      { path: 'navigation.log.distance.sinceLast', value: 0 },
+      { path: 'navigation.log.distance.24h', value: 0 },
+      { path: 'navigation.log.voyageName', value: voyage.name },
+      { path: 'navigation.log.positionsTracked', value: 0 }
     ];
 
     this.sendDeltas(deltas);

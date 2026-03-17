@@ -18,11 +18,6 @@ class UIController {
             this.submitLog();
         });
 
-        // Clear button
-        document.getElementById('clearLogBtn').addEventListener('click', () => {
-            document.getElementById('logText').value = '';
-        });
-
         // Position history button
         document.getElementById('viewHistoryBtn').addEventListener('click', () => {
             this.showPositionHistory();
@@ -111,7 +106,7 @@ class UIController {
             this.showMessage('error', `Error: ${error.message}`);
         } finally {
             submitBtn.disabled = false;
-            submitBtn.textContent = 'Submit Log Entry';
+            submitBtn.textContent = 'Save Log Entry';
         }
     }
 
@@ -397,20 +392,14 @@ class UIController {
      */
     updateTimeDisplay() {
         const nextNoonEl = document.getElementById('nextNoonTime');
-        const timeUntilEl = document.getElementById('timeUntilNoon');
 
         if (this.app.state.timeUntilNoon && this.app.state.timeUntilNoon.nextNoon) {
             nextNoonEl.textContent = this.app.state.timeUntilNoon.nextNoon.toLocaleTimeString('en-US', {
                 hour: '2-digit',
                 minute: '2-digit'
             });
-
-            const hours = this.app.state.timeUntilNoon.hours;
-            const minutes = this.app.state.timeUntilNoon.minutes;
-            timeUntilEl.textContent = `${hours}h ${minutes}m`;
         } else {
             nextNoonEl.textContent = '--:--';
-            timeUntilEl.textContent = '-- hours -- min';
         }
     }
 
@@ -420,9 +409,11 @@ class UIController {
     updateVoyageDisplay() {
         const voyageNameEl = document.getElementById('voyageName');
         const totalDistanceEl = document.getElementById('totalDistance');
+        const distance24hEl = document.getElementById('distance24h');
 
         voyageNameEl.textContent = this.app.state.voyageName || '--';
         totalDistanceEl.textContent = `${this.app.state.totalDistance.toFixed(1)} nm`;
+        distance24hEl.textContent = `${(this.app.state.distance24h || 0).toFixed(1)} nm`;
     }
 
     /**

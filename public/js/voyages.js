@@ -81,6 +81,7 @@ class VoyageManager {
                 </span>
             `;
             
+            // Stats grid
             let html = `
                 <div class="info-grid" style="margin-bottom: 20px;">
                     <div class="info-item">
@@ -104,9 +105,39 @@ class VoyageManager {
                         <div class="info-value">${voyage.logCount}</div>
                     </div>
                 </div>
-                
-                <h3>Export Options</h3>
-                <div class="voyage-actions">
+            `;
+
+            // Log entries section
+            const logsWithText = logs ? logs.filter(log => log.log_text && log.log_text.trim()) : [];
+            html += `<h3 style="margin: 0 0 12px 0;">Log Entries</h3>`;
+            if (logsWithText.length === 0) {
+                html += `<p class="empty-state">No log entries for this voyage</p>`;
+            } else {
+                html += `<div style="display: flex; flex-direction: column; gap: 8px; max-height: 300px; overflow-y: auto; margin-bottom: 20px;">`;
+                logsWithText.forEach(log => {
+                    const d = new Date(log.timestamp * 1000);
+                    const dateStr = d.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' });
+                    const timeStr = d.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' });
+                    const posStr = log.latitude && log.longitude
+                        ? `${Math.abs(log.latitude).toFixed(4)}° ${log.latitude >= 0 ? 'N' : 'S'}, ${Math.abs(log.longitude).toFixed(4)}° ${log.longitude >= 0 ? 'E' : 'W'}`
+                        : '';
+                    html += `
+                        <div class="log-data-item">
+                            <div style="display: flex; justify-content: space-between; margin-bottom: 6px;">
+                                <span class="log-data-label">${dateStr} &nbsp; ${timeStr}</span>
+                                ${posStr ? `<span class="log-data-label">${posStr}</span>` : ''}
+                            </div>
+                            <div class="log-data-value" style="white-space: pre-wrap; font-size: 0.9rem; font-weight: normal;">${this.escapeHtml(log.log_text)}</div>
+                        </div>
+                    `;
+                });
+                html += `</div>`;
+            }
+
+            // Export section — 3 buttons inline, delete full width below
+            html += `
+                <h3 style="margin: 0 0 12px 0;">Export</h3>
+                <div style="display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 10px; margin-bottom: 10px;">
                     <button class="export-btn" onclick="window.voyageManager.exportVoyage(${voyageId}, 'logbook')">
                         📄 Logbook (Text)
                         <br><small>Written logs + weather data</small>
@@ -119,19 +150,13 @@ class VoyageManager {
                         📦 Complete Export (JSON)
                         <br><small>All data - backup</small>
                     </button>
+                </div>
+                <button class="export-btn delete-voyage-btn" style="width: 100%;" onclick="window.voyageManager.deleteVoyage(${voyageId})">
+                    🗑️ Delete Voyage
+                    <br><small>Permanently delete all logs from this voyage</small>
+                </button>
             `;
-            
-            if (!voyage.isActive) {
-                html += `
-                    <button class="export-btn delete-voyage-btn" onclick="window.voyageManager.deleteVoyage(${voyageId})">
-                        🗑️ Delete Voyage
-                        <br><small>Permanently delete all logs from this voyage</small>
-                    </button>
-                `;
-            }
-            
-            html += `</div>`;
-            
+
             document.getElementById('voyageContent').innerHTML = html;
             
         } catch (error) {
@@ -237,6 +262,13 @@ class VoyageManager {
         } catch (error) {
             this.mainUI.showMessage('error', `Error: ${error.message}`);
         }
+    }
+
+    escapeHtml(str) {
+        if (!str) return '';
+        const div = document.createElement('div');
+        div.textContent = str;
+        return div.innerHTML;
     }
 
     // Initialize voyage modal handlers

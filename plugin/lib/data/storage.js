@@ -534,11 +534,7 @@ class LogStorage {
 
   // Delete voyage and all associated logs
   deleteVoyage(voyageId) {
-    // Don't allow deleting active voyage
-    const voyageCheck = this.db.exec(`SELECT is_active FROM voyage_info WHERE id = ?`, [voyageId]);
-    if (voyageCheck.length > 0 && voyageCheck[0].values[0][0] === 1) {
-      throw new Error('Cannot delete active voyage');
-    }
+    // Active voyages can be deleted — caller is responsible for stopping scheduler
     
     // Get logs for this voyage
     const logs = this.getLogsByVoyage(voyageId);

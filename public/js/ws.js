@@ -86,6 +86,8 @@ class WebSocketManager {
                     // Pending log status (boolean: true if pending, false if cleared)
                     // We store the boolean - the actual text stays on server
                     this.app.state.pendingLog = value ? true : false;
+                } else if (path === 'navigation.log.distance.24h') {
+                    this.app.state.distance24h = value;
                 } else if (path === 'navigation.log.positionsTracked') {
                     // Position tracking count
                     this.app.state.positionsTracked = value;

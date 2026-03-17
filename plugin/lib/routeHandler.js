@@ -332,16 +332,23 @@ function deleteVoyage(req, res, app, plugin) {
     }
     
     const result = plugin.voyageManager.deleteVoyage(validation.id);
-    
+
+    // If no active voyage remains, stop logging functions and reset UI state
+    const activeVoyage = plugin.storage.getActiveVoyage();
+    if (!activeVoyage) {
+      if (plugin.scheduler) plugin.scheduler.stop();
+      if (plugin.positionTracker) plugin.positionTracker.stop();
+      app.setPluginStatus('No active voyage — create one to resume logging');
+      if (plugin.publisher) plugin.publisher.publishVoyageDeleted();
+    } else if (plugin.publisher) {
+      plugin.publisher.publishVoyageListUpdated();
+    }
+
     // Also delete from Freeboard-SK if sync is enabled
     if (plugin.freeboardSync) {
       plugin.freeboardSync.deleteVoyageResources(validation.id).catch(err => {
         app.error(`Failed to delete Freeboard-SK resources for voyage ${validation.id}:`, err);
       });
-    }
-
-    if (plugin.publisher) {
-      plugin.publisher.publishVoyageListUpdated();
     }
     
     sendSuccess(res, result);

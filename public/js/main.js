@@ -12,6 +12,7 @@ class NoonLogUI {
             timeUntilNoon: null,
             lastLog: null,
             totalDistance: 0,
+            distance24h: 0,
             reportsSent: 0,
             voyageName: '--',
             pendingLog: false,  // Boolean flag: true if log pending, false if none

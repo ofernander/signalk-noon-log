@@ -128,16 +128,16 @@
                             <div class="info-value" id="nextNoonTime">--:--</div>
                         </div>
                         <div class="info-item">
-                            <div class="info-label">Time Until</div>
-                            <div class="info-value" id="timeUntilNoon">-- hours -- min</div>
-                        </div>
-                        <div class="info-item">
                             <div class="info-label">Active Voyage</div>
                             <div class="info-value" id="voyageName">--</div>
                         </div>
                         <div class="info-item">
                             <div class="info-label">Total Distance</div>
                             <div class="info-value" id="totalDistance">-- nm</div>
+                        </div>
+                        <div class="info-item">
+                            <div class="info-label">Last 24 Hours</div>
+                            <div class="info-value" id="distance24h">-- nm</div>
                         </div>
                         <div class="info-item" id="positionTrackingStatus" style="display: none;">
                             <div class="info-label">Position Tracking</div>
@@ -170,10 +170,10 @@
                         
                         <div class="button-group">
                             <button type="submit" class="btn btn-primary" id="submitLogBtn">
-                                Submit Log Entry
+                                Save Log Entry
                             </button>
-                            <button type="button" class="btn btn-secondary" id="clearLogBtn">
-                                Clear
+                            <button type="button" class="btn btn-warning" id="sendNowBtn">
+                                Email Log Now
                             </button>
                         </div>
 
@@ -286,21 +286,9 @@
                     <div id="voyagesList">
                         <div class="loading">Loading voyages...</div>
                     </div>
-                </div>
-            </div>
-
-            <!-- Actions Card -->
-            <div class="card">
-                <div class="card-header">
-                    <h2>Actions</h2>
-                </div>
-                <div class="card-body">
-                    <div class="button-group">
+                    <div style="margin-top: 15px;">
                         <button class="btn btn-secondary" id="resetVoyageBtn">
                             New Voyage
-                        </button>
-                        <button class="btn btn-warning" id="sendNowBtn">
-                            Send Log Now
                         </button>
                     </div>
                 </div>
