@@ -161,6 +161,14 @@ module.exports = function registerRoutes(router, app, plugin) {
   // ============================================================================
 
   /**
+   * GET /api/voyages/:id/positions
+   * Get auto-tracked positions for a voyage
+   */
+  router.get('/api/voyages/:id/positions', (req, res) => {
+    handler.getPositionHistory(req, res, app, plugin);
+  });
+
+  /**
    * GET /api/voyages/:id/export-gpx
    * Export voyage as GPX track file
    */

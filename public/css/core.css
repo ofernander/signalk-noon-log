@@ -16,6 +16,160 @@
     --shadow-lg: 0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -2px rgba(0, 0, 0, 0.05);
 }
 
+/* Night Mode - Red/Black palette for night vision */
+body.night-mode {
+    --primary-color: #cc0000;
+    --primary-hover: #990000;
+    --secondary-color: #8b0000;
+    --success-color: #cc2200;
+    --warning-color: #cc4400;
+    --danger-color: #ff0000;
+    --background: #0a0000;
+    --card-background: #1a0000;
+    --border-color: #3d0000;
+    --text-primary: #ff4444;
+    --text-secondary: #cc2222;
+    --shadow: 0 1px 3px 0 rgba(200, 0, 0, 0.2), 0 1px 2px 0 rgba(200, 0, 0, 0.1);
+    --shadow-lg: 0 10px 15px -3px rgba(200, 0, 0, 0.2), 0 4px 6px -2px rgba(200, 0, 0, 0.1);
+    background-color: #0a0000;
+}
+
+body.night-mode .message.success {
+    background-color: #1a0000;
+    color: #ff4444;
+    border-color: #cc0000;
+}
+
+body.night-mode .message.error {
+    background-color: #1a0000;
+    color: #ff6666;
+    border-color: #ff0000;
+}
+
+body.night-mode .history-item-badge.sent {
+    background-color: #1a0000;
+    color: #ff4444;
+}
+
+body.night-mode input,
+body.night-mode textarea {
+    background-color: #1a0000;
+    color: #ff4444;
+    border-color: #3d0000;
+}
+
+body.night-mode input::placeholder,
+body.night-mode textarea::placeholder {
+    color: #660000;
+}
+
+body.night-mode .email-list {
+    background: #0a0000;
+    border-color: #3d0000;
+}
+
+body.night-mode .email-item {
+    background: #1a0000;
+    border-color: #3d0000;
+}
+
+body.night-mode .email-item:hover {
+    border-color: #cc0000;
+}
+
+body.night-mode .email-address {
+    color: #ff4444;
+}
+
+body.night-mode .email-remove-btn {
+    border-color: #cc0000;
+    color: #ff4444;
+}
+
+body.night-mode .email-remove-btn:hover {
+    background: #cc0000;
+    color: #0a0000;
+}
+
+/* Log viewer classes - use CSS variables so night mode works instantly */
+.log-item-date { font-weight: 500; font-size: 0.9rem; color: var(--text-primary); }
+.log-item-time { font-size: 0.75rem; color: var(--text-secondary); margin-top: 2px; }
+.log-item-preview { font-size: 0.75rem; color: var(--text-secondary); margin-top: 4px; opacity: 0.8; }
+.log-data-item { background-color: var(--background); padding: 10px; border-radius: 4px; border: 1px solid var(--border-color); }
+.log-data-label { font-size: 0.8rem; color: var(--text-secondary); margin-bottom: 4px; }
+.log-data-value { font-weight: 500; color: var(--text-primary); }
+.log-viewer-container { background-color: var(--background); padding: 15px; border-radius: 8px; border: 1px solid var(--border-color); }
+.log-viewer-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 15px; padding-bottom: 10px; border-bottom: 2px solid var(--border-color); }
+.log-section-label { font-size: 0.95rem; color: var(--text-secondary); margin: 0 0 10px 0; font-weight: 600; }
+.log-count-label { font-weight: 500; font-size: 0.9rem; color: var(--text-secondary); margin-bottom: 10px; }
+.log-placeholder { text-align: center; padding: 60px 20px; color: var(--text-secondary); font-size: 1.1rem; }
+.log-list-border { border-right: 1px solid var(--border-color); padding-right: 20px; display: flex; flex-direction: column; max-height: 550px; }
+.log-list-separator { border-top: 1px solid var(--border-color); margin-top: 15px; padding-top: 15px; }
+.voyage-log-item { padding: 10px; cursor: pointer; border-bottom: 1px solid var(--border-color); transition: background-color 0.2s; }
+.voyage-log-item:hover { background-color: var(--background); }
+.voyage-log-item.selected { background-color: var(--background); border-left: 3px solid var(--primary-color); }
+.voyage-active-tag { color: var(--success-color); }
+.log-position-badge { padding: 4px 12px; color: white; border-radius: 12px; font-size: 0.875rem; font-weight: 500; }
+.log-position-badge--found { background-color: var(--success-color); }
+.log-position-badge--missing { background-color: var(--text-secondary); }
+
+/* Night mode toggle switch */
+.night-toggle {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    cursor: pointer;
+    margin-left: auto;
+    margin-right: 20px;
+}
+
+.night-toggle-label {
+    font-size: 13px;
+    color: var(--text-secondary);
+    user-select: none;
+}
+
+.night-toggle-switch {
+    position: relative;
+    width: 44px;
+    height: 24px;
+}
+
+.night-toggle-switch input {
+    opacity: 0;
+    width: 0;
+    height: 0;
+}
+
+.night-toggle-slider {
+    position: absolute;
+    cursor: pointer;
+    top: 0; left: 0; right: 0; bottom: 0;
+    background-color: #ccc;
+    border-radius: 24px;
+    transition: 0.3s;
+}
+
+.night-toggle-slider:before {
+    position: absolute;
+    content: "";
+    height: 18px;
+    width: 18px;
+    left: 3px;
+    bottom: 3px;
+    background-color: white;
+    border-radius: 50%;
+    transition: 0.3s;
+}
+
+.night-toggle-switch input:checked + .night-toggle-slider {
+    background-color: #cc0000;
+}
+
+.night-toggle-switch input:checked + .night-toggle-slider:before {
+    transform: translateX(20px);
+}
+
 * {
     margin: 0;
     padding: 0;

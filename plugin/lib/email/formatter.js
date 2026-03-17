@@ -279,6 +279,10 @@ class EmailFormatter {
           <div class="data-value">${distance.distanceSinceLast.toFixed(1)} nm</div>
         </div>
         <div class="data-item">
+          <div class="data-label">Last 24 Hours</div>
+          <div class="data-value">${(distance.distance24h || 0).toFixed(1)} nm</div>
+        </div>
+        <div class="data-item">
           <div class="data-label">Total Voyage</div>
           <div class="data-value">${distance.totalDistance.toFixed(1)} nm</div>
         </div>
@@ -389,6 +393,7 @@ class EmailFormatter {
     if (distance) {
       text += `DISTANCE:\n`;
       text += `Since Last Report: ${distance.distanceSinceLast.toFixed(1)} nm\n`;
+      text += `Last 24 Hours: ${(distance.distance24h || 0).toFixed(1)} nm\n`;
       text += `Total Voyage: ${distance.totalDistance.toFixed(1)} nm\n\n`;
     }
 

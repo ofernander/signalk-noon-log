@@ -36,28 +36,33 @@ class DistanceCalculator {
   }
 
   /**
-   * Calculate distance since last log entry
-   * @param {number} currentLat - Current latitude
-   * @param {number} currentLon - Current longitude
-   * @returns {number} Distance in nautical miles, or 0 if no previous log
+   * Calculate distance since last noon report using position track
+   * Sums position track segments after the last noon report timestamp
+   * @returns {number} Distance in nautical miles
    */
-  getDistanceSinceLast(currentLat, currentLon) {
-    const lastLog = this.storage.getLastLog();
-    
-    if (!lastLog || !lastLog.latitude || !lastLog.longitude) {
-      return 0;
-    }
+  getDistanceSinceLast() {
+    const lastReport = this.storage.getLastLog(); // now returns only noon reports
+    const voyage = this.storage.getActiveVoyage();
+    if (!voyage) return 0;
 
-    return this.haversineDistance(
-      lastLog.latitude,
-      lastLog.longitude,
-      currentLat,
-      currentLon
-    );
+    // If no previous noon report, use voyage start
+    const sinceTimestamp = lastReport ? lastReport.timestamp : voyage.start_timestamp;
+    return this.storage.getDistanceSinceTimestamp(voyage.id, sinceTimestamp);
   }
 
   /**
-   * Get total voyage distance from database
+   * Calculate distance sailed in the last 24 hours using position track
+   * @returns {number} Distance in nautical miles
+   */
+  getDistance24h() {
+    const voyage = this.storage.getActiveVoyage();
+    if (!voyage) return 0;
+    const since24h = Math.floor(Date.now() / 1000) - 86400;
+    return this.storage.getDistanceSinceTimestamp(voyage.id, since24h);
+  }
+
+  /**
+   * Get total voyage distance from position track
    * @returns {number} Total distance in nautical miles
    */
   getTotalVoyageDistance() {
@@ -65,18 +70,17 @@ class DistanceCalculator {
   }
 
   /**
-   * Calculate distance data for a new log entry
-   * @param {number} currentLat - Current latitude
-   * @param {number} currentLon - Current longitude
-   * @returns {Object} Object with distanceSinceLast and totalDistance
+   * Calculate all distance data for a noon report
+   * @returns {Object} Object with distanceSinceLast, distance24h, and totalDistance
    */
-  calculateDistanceData(currentLat, currentLon) {
-    const distanceSinceLast = this.getDistanceSinceLast(currentLat, currentLon);
-    const currentTotal = this.getTotalVoyageDistance();
-    const totalDistance = currentTotal + distanceSinceLast;
+  calculateDistanceData() {
+    const distanceSinceLast = this.getDistanceSinceLast();
+    const distance24h = this.getDistance24h();
+    const totalDistance = this.getTotalVoyageDistance();
 
     return {
-      distanceSinceLast: Math.round(distanceSinceLast * 10) / 10, // Round to 1 decimal
+      distanceSinceLast: Math.round(distanceSinceLast * 10) / 10,
+      distance24h: Math.round(distance24h * 10) / 10,
       totalDistance: Math.round(totalDistance * 10) / 10
     };
   }

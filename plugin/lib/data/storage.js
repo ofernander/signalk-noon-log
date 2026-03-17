@@ -315,10 +315,10 @@ class LogStorage {
     };
   }
 
-  // Get the last log entry
+  // Get the last noon report entry (not auto-tracked positions)
   getLastLog() {
     const result = this.db.exec(`
-      SELECT * FROM log_entries ORDER BY timestamp DESC LIMIT 1
+      SELECT * FROM log_entries WHERE is_auto_track = 0 ORDER BY timestamp DESC LIMIT 1
     `);
     
     if (result.length === 0 || result[0].values.length === 0) return null;
@@ -387,19 +387,50 @@ class LogStorage {
     return this.resultToObjects(result[0])[0];
   }
 
-  // Get total distance for active voyage
+  // Get total distance for active voyage calculated from position track
   getVoyageDistance() {
+    const voyage = this.getActiveVoyage();
+    if (!voyage) return 0;
+    return this.getDistanceSinceTimestamp(voyage.id, voyage.start_timestamp);
+  }
+
+  /**
+   * Calculate distance sailed since a given timestamp using position track
+   * Sums haversine distance between consecutive auto-tracked positions
+   * @param {number} voyageId - Voyage ID to scope positions
+   * @param {number} sinceTimestamp - Unix timestamp to calculate from
+   * @returns {number} Distance in nautical miles
+   */
+  getDistanceSinceTimestamp(voyageId, sinceTimestamp) {
     const result = this.db.exec(`
-      SELECT SUM(dl.distance_since_last) as total
-      FROM distance_log dl
-      JOIN log_entries le ON dl.log_id = le.id
-      JOIN voyage_info v ON v.is_active = 1
-      WHERE le.timestamp >= v.start_timestamp
-    `);
-    
-    if (result.length === 0 || result[0].values.length === 0) return 0;
-    
-    return result[0].values[0][0] || 0;
+      SELECT latitude, longitude FROM log_entries
+      WHERE is_auto_track = 1
+        AND voyage_id = ?
+        AND timestamp >= ?
+        AND latitude IS NOT NULL
+        AND longitude IS NOT NULL
+      ORDER BY timestamp ASC
+    `, [voyageId, sinceTimestamp]);
+
+    if (result.length === 0 || result[0].values.length < 2) return 0;
+
+    const points = result[0].values;
+    const R = 3440.065; // Earth radius in nautical miles
+    let total = 0;
+
+    for (let i = 1; i < points.length; i++) {
+      const [lat1, lon1] = points[i - 1];
+      const [lat2, lon2] = points[i];
+      if (lat1 == null || lon1 == null || lat2 == null || lon2 == null) continue;
+      const dLat = (lat2 - lat1) * Math.PI / 180;
+      const dLon = (lon2 - lon1) * Math.PI / 180;
+      const a = Math.sin(dLat / 2) ** 2 +
+                Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) *
+                Math.sin(dLon / 2) ** 2;
+      total += R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+    }
+
+    return Math.round(total * 10) / 10;
   }
 
   // Get current active voyage info
@@ -430,22 +461,16 @@ class LogStorage {
         v.voyage_name,
         v.start_timestamp,
         v.is_active,
-        COUNT(DISTINCT le.id) as log_count,
-        MAX(le.timestamp) as last_entry_timestamp,
-        COALESCE(SUM(dl.distance_since_last), 0) as total_distance
+        COUNT(DISTINCT CASE WHEN le.is_auto_track = 0 THEN le.id END) as log_count,
+        MAX(le.timestamp) as last_entry_timestamp
       FROM voyage_info v
-      LEFT JOIN log_entries le ON le.timestamp >= v.start_timestamp 
-        AND (v.is_active = 1 OR le.timestamp < (
-          SELECT start_timestamp FROM voyage_info 
-          WHERE id > v.id ORDER BY id LIMIT 1
-        ))
-      LEFT JOIN distance_log dl ON dl.log_id = le.id
+      LEFT JOIN log_entries le ON le.voyage_id = v.id
       GROUP BY v.id
       ORDER BY v.start_timestamp DESC
     `);
-    
+
     if (result.length === 0) return [];
-    
+
     return this.resultToObjects(result[0]).map(voyage => ({
       id: voyage.id,
       name: voyage.voyage_name || 'Unnamed Voyage',
@@ -453,7 +478,7 @@ class LogStorage {
       isActive: voyage.is_active === 1,
       logCount: voyage.log_count || 0,
       lastEntryTimestamp: voyage.last_entry_timestamp,
-      totalDistance: voyage.total_distance || 0
+      totalDistance: this.getDistanceSinceTimestamp(voyage.id, voyage.start_timestamp)
     }));
   }
 
@@ -569,6 +594,62 @@ class LogStorage {
 
     // Get full data for each log
     return logs.map(log => this.getLogById(log.id));
+  }
+
+  /**
+   * Get auto-tracked positions for a specific voyage with sensor data
+   * @param {number} voyageId - Voyage ID
+   * @param {number} limit - Max records to return
+   * @returns {Array} Array of position objects with data
+   */
+  getPositionsByVoyage(voyageId, limit = 200) {
+    // Get voyage time bounds
+    const voyageResult = this.db.exec(
+      `SELECT start_timestamp, is_active FROM voyage_info WHERE id = ?`,
+      [voyageId]
+    );
+    if (voyageResult.length === 0 || voyageResult[0].values.length === 0) return [];
+
+    const startTimestamp = voyageResult[0].values[0][0];
+    const isActive = voyageResult[0].values[0][1];
+
+    let endTimestamp = null;
+    if (!isActive) {
+      const nextResult = this.db.exec(
+        `SELECT start_timestamp FROM voyage_info WHERE id > ? ORDER BY id LIMIT 1`,
+        [voyageId]
+      );
+      if (nextResult.length > 0 && nextResult[0].values.length > 0) {
+        endTimestamp = nextResult[0].values[0][0];
+      }
+    }
+
+    let query = `
+      SELECT id, timestamp, latitude, longitude
+      FROM log_entries
+      WHERE is_auto_track = 1 AND timestamp >= ?
+    `;
+    const params = [startTimestamp];
+    if (endTimestamp) {
+      query += ` AND timestamp < ?`;
+      params.push(endTimestamp);
+    }
+    query += ` ORDER BY timestamp DESC LIMIT ?`;
+    params.push(limit);
+
+    const result = this.db.exec(query, params);
+    if (result.length === 0) return [];
+
+    return this.resultToObjects(result[0]).map(pos => {
+      const dataResult = this.db.exec(
+        `SELECT data_label, data_value, data_unit FROM log_data WHERE log_id = ?`,
+        [pos.id]
+      );
+      return {
+        ...pos,
+        data: dataResult.length > 0 ? this.resultToObjects(dataResult[0]) : []
+      };
+    });
   }
 
   /**

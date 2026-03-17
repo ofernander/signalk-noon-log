@@ -26,7 +26,7 @@ class VoyageManager {
             let html = '';
             voyages.forEach(voyage => {
                 const startDate = new Date(voyage.startTimestamp * 1000).toLocaleDateString();
-                const activeTag = voyage.isActive ? ' <span style="color: #28a745;">(Active)</span>' : '';
+                const activeTag = voyage.isActive ? ' <span class="voyage-active-tag">(Active)</span>' : '';
                 
                 html += `
                     <div class="voyage-item${voyage.isActive ? ' active' : ''}" data-voyage-id="${voyage.id}">

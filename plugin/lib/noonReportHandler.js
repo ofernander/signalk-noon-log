@@ -27,11 +27,8 @@ class NoonReportHandler {
           return;
         }
   
-        // Calculate distance
-        const distanceData = this.plugin.distanceCalculator.calculateDistanceData(
-          noonData.position.latitude,
-          noonData.position.longitude
-        );
+        // Calculate distance from position track
+        const distanceData = this.plugin.distanceCalculator.calculateDistanceData();
   
         // Create log entry in database
         const logId = this.createDatabaseEntry(noonData, distanceData);

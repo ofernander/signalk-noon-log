@@ -23,9 +23,9 @@ class UIController {
             document.getElementById('logText').value = '';
         });
 
-        // View history button
+        // Position history button
         document.getElementById('viewHistoryBtn').addEventListener('click', () => {
-            this.showHistory();
+            this.showPositionHistory();
         });
 
         // New voyage button
@@ -116,63 +116,105 @@ class UIController {
     }
 
     /**
-     * Show history modal
+     * Show position history modal
      */
-    async showHistory() {
+    async showPositionHistory() {
         document.getElementById('historyModal').style.display = 'flex';
         document.getElementById('historyContent').innerHTML = '<div class="loading">Loading...</div>';
 
         try {
-            const response = await fetch('/plugins/signalk-noon-log/api/history?limit=30');
-            const logs = await response.json();
-            this.displayHistory(logs);
+            // Get current voyage ID
+            const voyageResponse = await fetch('/plugins/signalk-noon-log/api/voyage');
+            const voyageData = await voyageResponse.json();
+            const voyageId = voyageData?.data?.id;
+
+            if (!voyageId) {
+                document.getElementById('historyContent').innerHTML =
+                    '<div class="empty-state"><p>No active voyage</p></div>';
+                return;
+            }
+
+            const response = await fetch(`/plugins/signalk-noon-log/api/voyages/${voyageId}/positions`);
+            const result = await response.json();
+
+            if (!result.success) {
+                throw new Error(result.error || 'Failed to load positions');
+            }
+
+            this.displayPositionHistory(result.data.positions);
         } catch (error) {
-            document.getElementById('historyContent').innerHTML = 
-                `<div class="empty-state"><p>Error loading history: ${error.message}</p></div>`;
+            document.getElementById('historyContent').innerHTML =
+                `<div class="empty-state"><p>Error loading positions: ${error.message}</p></div>`;
         }
     }
 
     /**
-     * Display history in modal
+     * Display position history in modal
      */
-    displayHistory(logs) {
+    displayPositionHistory(positions) {
         const historyContent = document.getElementById('historyContent');
 
-        if (!logs || logs.length === 0) {
-            historyContent.innerHTML = '<div class="empty-state"><p>No log entries yet</p></div>';
+        if (!positions || positions.length === 0) {
+            historyContent.innerHTML = '<div class="empty-state"><p>No positions tracked yet</p></div>';
             return;
         }
 
-        let html = '<div class="history-list">';
-
-        for (const log of logs) {
-            const date = new Date(log.timestamp * 1000);
-            const dateStr = date.toLocaleDateString('en-US', {
-                month: 'short',
-                day: 'numeric',
-                year: 'numeric'
-            });
-            const timeStr = date.toLocaleTimeString('en-US', {
-                hour: '2-digit',
-                minute: '2-digit'
-            });
-
-            const preview = log.log_text ? log.log_text.substring(0, 100) + (log.log_text.length > 100 ? '...' : '') : 'No log text';
-            const badgeClass = log.email_sent ? 'sent' : 'pending';
-            const badgeText = log.email_sent ? '✓ Sent' : '⏳ Pending';
-
-            html += `
-                <div class="history-item">
-                    <div class="history-item-header">
-                        <span class="history-item-date">${dateStr} ${timeStr}</span>
-                        <span class="history-item-badge ${badgeClass}">${badgeText}</span>
-                    </div>
-                    <div class="history-item-preview">${this.escapeHtml(preview)}</div>
-                </div>
-            `;
+        // Build dynamic column headers from first record with data
+        const sensorLabels = [];
+        for (const pos of positions) {
+            if (pos.data && pos.data.length > 0) {
+                pos.data.forEach(d => {
+                    if (!sensorLabels.includes(d.data_label)) {
+                        sensorLabels.push(d.data_label);
+                    }
+                });
+                break;
+            }
         }
 
-        html += '</div>';
+        let html = `
+            <div style="overflow-x: auto;">
+            <table style="width: 100%; border-collapse: collapse; font-size: 0.85rem;">
+                <thead>
+                    <tr style="border-bottom: 2px solid var(--border-color); text-align: left;">
+                        <th style="padding: 8px 12px; color: var(--text-secondary); font-weight: 600;">Time</th>
+                        <th style="padding: 8px 12px; color: var(--text-secondary); font-weight: 600;">Position</th>
+                        ${sensorLabels.map(l => `<th style="padding: 8px 12px; color: var(--text-secondary); font-weight: 600;">${this.escapeHtml(l)}</th>`).join('')}
+                    </tr>
+                </thead>
+                <tbody>
+        `;
+
+        positions.forEach((pos, idx) => {
+            const date = new Date(pos.timestamp * 1000);
+            const timeStr = date.toLocaleString('en-US', {
+                month: 'short', day: 'numeric',
+                hour: '2-digit', minute: '2-digit'
+            });
+            const latStr = pos.latitude ? `${pos.latitude.toFixed(4)}°` : '--';
+            const lonStr = pos.longitude ? `${pos.longitude.toFixed(4)}°` : '--';
+            const rowBg = idx % 2 === 0 ? 'background-color: var(--background);' : '';
+
+            // Build sensor value map for this row
+            const sensorMap = {};
+            if (pos.data) {
+                pos.data.forEach(d => {
+                    sensorMap[d.data_label] = `${d.data_value || '--'}${d.data_unit ? ' ' + d.data_unit : ''}`;
+                });
+            }
+
+            html += `
+                <tr style="border-bottom: 1px solid var(--border-color); ${rowBg}">
+                    <td style="padding: 8px 12px; color: var(--text-primary); white-space: nowrap;">${timeStr}</td>
+                    <td style="padding: 8px 12px; color: var(--text-primary); white-space: nowrap; font-family: monospace; font-size: 0.8rem;">${latStr} N<br>${lonStr} W</td>
+                    ${sensorLabels.map(l => `<td style="padding: 8px 12px; color: var(--text-primary);">${this.escapeHtml(sensorMap[l] || '--')}</td>`).join('')}
+                </tr>
+            `;
+        });
+
+        html += `</tbody></table></div>`;
+        html += `<div style="text-align: right; margin-top: 10px; font-size: 0.8rem; color: var(--text-secondary);">${positions.length} position${positions.length !== 1 ? 's' : ''} recorded</div>`;
+
         historyContent.innerHTML = html;
     }
 
@@ -410,7 +452,7 @@ class UIController {
             
             // Build the message with next report time
             let message = '<div style="color: #856404; padding: 10px; text-align: center;">';
-            message += '✅ Log entry saved and ready to send';
+            message += 'Log entry saved and ready to send';
             
             // Add scheduled time if available
             if (this.app.state.timeUntilNoon && this.app.state.timeUntilNoon.nextNoon) {
@@ -518,7 +560,7 @@ class UIController {
                 <div class="email-item">
                     <span class="email-address">${this.escapeHtml(email)}</span>
                     <button class="email-remove-btn" data-email="${this.escapeHtml(email)}">
-                        🗑️ Remove
+                        Remove
                     </button>
                 </div>
             `).join('');
@@ -686,16 +728,12 @@ class UIController {
     displayVoyageLogsList(logs) {
         const container = document.getElementById('voyageLogsList');
         const countEl = document.getElementById('logListCount');
-        
+
         // Filter to only logs with text (no auto-track positions)
         const logsWithText = logs.filter(log => log.log_text && log.log_text.trim());
-        
+
         if (!logsWithText || logsWithText.length === 0) {
-            container.innerHTML = `
-                <div style="text-align: center; padding: 20px; color: #6c757d;">
-                    No log entries yet
-                </div>
-            `;
+            container.innerHTML = '<div class="empty-state">No log entries yet</div>';
             countEl.textContent = 'No Log Entries';
             return;
         }
@@ -704,11 +742,10 @@ class UIController {
 
         // Store logs in a property so click handlers can access them
         this.currentVoyageLogs = logsWithText;
-
         container.innerHTML = logsWithText.map(log => {
             const date = new Date(log.timestamp * 1000);
-            const dateDisplay = date.toLocaleDateString('en-US', { 
-                month: 'short', 
+            const dateDisplay = date.toLocaleDateString('en-US', {
+                month: 'short',
                 day: 'numeric',
                 weekday: 'short'
             });
@@ -716,44 +753,35 @@ class UIController {
                 hour: '2-digit',
                 minute: '2-digit'
             });
-            
-            // Get first 60 chars of log text as preview
             const preview = log.log_text.substring(0, 60) + (log.log_text.length > 60 ? '...' : '');
-            
+
             return `
-                <div class="voyage-log-item" data-log-id="${log.id}" 
-                     style="padding: 10px; cursor: pointer; border-bottom: 1px solid #e9ecef; transition: background-color 0.2s;"
-                     onmouseover="this.style.backgroundColor='#f8f9fa'"
-                     onmouseout="this.style.backgroundColor='white'">
-                    <div style="display: flex; align-items: start; gap: 8px;">
-                        <span style="font-size: 1.2rem;">📝</span>
-                        <div style="flex: 1; min-width: 0;">
-                            <div style="font-weight: 500; font-size: 0.9rem; color: #212529;">${dateDisplay}</div>
-                            <div style="font-size: 0.75rem; color: #6c757d; margin-top: 2px;">${timeDisplay}</div>
-                            <div style="font-size: 0.75rem; color: #495057; margin-top: 4px; opacity: 0.8;">${this.escapeHtml(preview)}</div>
-                        </div>
-                    </div>
+                <div class="voyage-log-item" data-log-id="${log.id}">
+                    <div class="log-item-date">${dateDisplay}</div>
+                    <div class="log-item-time">${timeDisplay}</div>
+                    <div class="log-item-preview">${this.escapeHtml(preview)}</div>
                 </div>
             `;
         }).join('');
 
-        // Add click handlers - using arrow function to preserve 'this' context
+        // Add click handlers
         container.querySelectorAll('.voyage-log-item').forEach(item => {
             item.addEventListener('click', () => {
                 const logId = parseInt(item.getAttribute('data-log-id'));
                 const log = this.currentVoyageLogs.find(l => l.id === logId);
                 if (log) {
                     this.displayLogById(log);
-                    // Highlight selected
-                    container.querySelectorAll('.voyage-log-item').forEach(i => {
-                        i.style.backgroundColor = 'white';
-                    });
-                    item.style.backgroundColor = '#e7f3ff';
+                    container.querySelectorAll('.voyage-log-item').forEach(i => i.classList.remove('selected'));
+                    item.classList.add('selected');
                 } else {
                     console.error('Log not found with ID:', logId);
                 }
             });
         });
+
+        // Auto-load the most recent log after handlers are attached
+        const firstItem = container.querySelector('.voyage-log-item');
+        if (firstItem) firstItem.click();
     }
 
     /**
@@ -818,12 +846,16 @@ class UIController {
         // Display position in the badge area
         const positionEl = document.getElementById('logViewerType');
         if (log.latitude && log.longitude) {
-            positionEl.textContent = `${log.latitude.toFixed(6)}°, ${log.longitude.toFixed(6)}°`;
-            positionEl.style.backgroundColor = '#28a745';
+            const latDir = log.latitude >= 0 ? 'N' : 'S';
+            const lonDir = log.longitude >= 0 ? 'E' : 'W';
+            positionEl.textContent = `${Math.abs(log.latitude).toFixed(4)}° ${latDir}, ${Math.abs(log.longitude).toFixed(4)}° ${lonDir}`;
+            positionEl.style.backgroundColor = '';
+            positionEl.className = 'log-position-badge log-position-badge--found';
             positionEl.style.fontSize = '0.8rem';
         } else {
             positionEl.textContent = 'No position';
-            positionEl.style.backgroundColor = '#6c757d';
+            positionEl.style.backgroundColor = '';
+            positionEl.className = 'log-position-badge log-position-badge--missing';
         }
 
         // Display log text if present
@@ -841,9 +873,9 @@ class UIController {
         const dataContainer = document.getElementById('logViewerData');
         if (log.data && log.data.length > 0) {
             dataContainer.innerHTML = log.data.map(item => `
-                <div style="background-color: white; padding: 10px; border-radius: 4px; border: 1px solid #dee2e6;">
-                    <div style="font-size: 0.8rem; color: #6c757d; margin-bottom: 4px;">${this.escapeHtml(item.data_label)}</div>
-                    <div style="font-weight: 500;">${this.escapeHtml(item.data_value)}${this.escapeHtml(item.data_unit || '')}</div>
+                <div class="log-data-item">
+                    <div class="log-data-label">${this.escapeHtml(item.data_label)}</div>
+                    <div class="log-data-value">${this.escapeHtml(item.data_value)}${this.escapeHtml(item.data_unit || '')}</div>
                 </div>
             `).join('');
             dataSection.style.display = 'block';

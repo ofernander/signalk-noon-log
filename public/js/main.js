@@ -83,7 +83,27 @@ class NoonLogUI {
 
 // Initialize when DOM is ready
 document.addEventListener('DOMContentLoaded', () => {
+    // Apply night mode BEFORE initializing UI so first render uses correct colors
+    const nightToggle = document.getElementById('nightModeToggle');
+    const logoImg = document.querySelector('header h1 img');
+    const iconBase = './assets/icons/signalk-noon-log-icon_72x72';
+
+    if (localStorage.getItem('nightMode') === 'true') {
+        document.body.classList.add('night-mode');
+        nightToggle.checked = true;
+        logoImg.src = `${iconBase}_dark.png`;
+        logoImg.style.display = 'none';
+    }
+
     window.noonLogUI = new NoonLogUI();
+
+    nightToggle.addEventListener('change', () => {
+        document.body.classList.toggle('night-mode', nightToggle.checked);
+        localStorage.setItem('nightMode', nightToggle.checked);
+        logoImg.src = nightToggle.checked ? `${iconBase}_dark.png` : `${iconBase}.png`;
+        logoImg.style.display = nightToggle.checked ? 'none' : 'inline';
+        // No need to re-render — all colors now use CSS variables
+    });
     
     // Initialize voyage manager with a slight delay to ensure it's loaded
     setTimeout(() => {

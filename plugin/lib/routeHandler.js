@@ -544,6 +544,30 @@ function removeEmailRecipient(req, res, app, plugin) {
 }
 
 // ============================================================================
+// POSITION HISTORY HANDLER
+// ============================================================================
+
+/**
+ * GET /api/voyages/:id/positions
+ * Get auto-tracked positions for a voyage with sensor data
+ */
+function getPositionHistory(req, res, app, plugin) {
+  try {
+    const validation = validateVoyageId(req.params.id);
+    if (!validation.valid) {
+      return sendError(res, validation.error, 400);
+    }
+
+    const positions = plugin.storage.getPositionsByVoyage(validation.id);
+    sendSuccess(res, { positions, count: positions.length });
+
+  } catch (error) {
+    app.error('Error getting position history:', error);
+    sendError(res, error);
+  }
+}
+
+// ============================================================================
 // EXPORT HANDLERS
 // ============================================================================
 
@@ -620,6 +644,7 @@ module.exports = {
   deleteVoyage,
   renameVoyage,
   resetVoyage,
+  getPositionHistory,
   
   // Email handlers
   getEmailRecipients,
