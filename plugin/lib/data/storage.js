@@ -1,5 +1,4 @@
-const initSqlJs = require('sql.js');
-const fs = require('fs');
+const { DatabaseSync: Database } = require('node:sqlite'); // built-in Node 22+ — no dependencies, no WASM, no compilation
 const path = require('path');
 
 class LogStorage {
@@ -8,64 +7,43 @@ class LogStorage {
     const dataDir = app.getDataDirPath();
     this.dbPath = path.join(dataDir, 'noon-log.db');
     this.db = null;
-    this.SQL = null;
   }
 
-  async init() {
+  // Synchronous init — DatabaseSync is fully synchronous, no await needed
+  // index.js calls await plugin.storage.init() which still works fine
+  init() {
     try {
-      // Initialize sql.js
-      this.SQL = await initSqlJs();
-      
-      // Load existing database or create new one
-      if (fs.existsSync(this.dbPath)) {
-        const buffer = fs.readFileSync(this.dbPath);
-        this.db = new this.SQL.Database(buffer);
-        this.app.debug('Loaded existing noon log database');
-      } else {
-        this.db = new this.SQL.Database();
-        this.app.debug('Created new noon log database');
-      }
-      
+      this.db = new Database(this.dbPath);
+      this.app.debug(`Database opened: ${this.dbPath}`);
+
       // Check if table has new columns - if not, recreate
-      const tableInfo = this.db.exec("PRAGMA table_info(log_entries)");
+      const tableInfo = this.db.prepare('PRAGMA table_info(log_entries)').all();
       if (tableInfo.length > 0) {
-        const columns = tableInfo[0].values.map(row => row[1]);
+        const columns = tableInfo.map(row => row.name);
         const hasVoyageId = columns.includes('voyage_id');
         const hasIsAutoTrack = columns.includes('is_auto_track');
-        
+
         if (!hasVoyageId || !hasIsAutoTrack) {
-          // Drop and recreate tables with new schema
           this.app.debug('Outdated schema detected, recreating tables...');
-          this.db.run('DROP TABLE IF EXISTS log_entries');
-          this.db.run('DROP TABLE IF EXISTS log_data');
-          this.db.run('DROP TABLE IF EXISTS distance_log');
+          this.db.exec('DROP TABLE IF EXISTS log_entries');
+          this.db.exec('DROP TABLE IF EXISTS log_data');
+          this.db.exec('DROP TABLE IF EXISTS distance_log');
         }
       }
-      
+
       this.createTables();
-      this.saveDatabase();
       this.app.debug('Noon log database initialized');
       return true;
     } catch (error) {
-      this.app.error('Failed to initialize database:', error);
+      this.app.error(`Database init error: ${error.message}`);
       return false;
     }
   }
 
-  // Save database to disk
-  saveDatabase() {
-    try {
-      const data = this.db.export();
-      const buffer = Buffer.from(data);
-      fs.writeFileSync(this.dbPath, buffer);
-    } catch (error) {
-      this.app.error('Failed to save database:', error);
-    }
-  }
+  // No saveDatabase() — node:sqlite writes to disk on every run() call automatically
 
   createTables() {
-    // Main log entries table
-    this.db.run(`
+    this.db.exec(`
       CREATE TABLE IF NOT EXISTS log_entries (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         voyage_id INTEGER,
@@ -80,8 +58,7 @@ class LogStorage {
       )
     `);
 
-    // Weather/environmental data table
-    this.db.run(`
+    this.db.exec(`
       CREATE TABLE IF NOT EXISTS log_data (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         log_id INTEGER NOT NULL,
@@ -93,8 +70,7 @@ class LogStorage {
       )
     `);
 
-    // Distance tracking table
-    this.db.run(`
+    this.db.exec(`
       CREATE TABLE IF NOT EXISTS distance_log (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         log_id INTEGER NOT NULL,
@@ -104,8 +80,7 @@ class LogStorage {
       )
     `);
 
-    // Voyage tracking (for trip resets)
-    this.db.run(`
+    this.db.exec(`
       CREATE TABLE IF NOT EXISTS voyage_info (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         voyage_name TEXT,
@@ -115,276 +90,159 @@ class LogStorage {
       )
     `);
 
-    // Create indexes
-    this.db.run(`
-      CREATE INDEX IF NOT EXISTS idx_log_timestamp ON log_entries(timestamp)
-    `);
-    this.db.run(`
-      CREATE INDEX IF NOT EXISTS idx_log_date ON log_entries(date_str)
-    `);
-    this.db.run(`
-      CREATE INDEX IF NOT EXISTS idx_voyage_active ON voyage_info(is_active)
-    `);
+    this.db.exec(`CREATE INDEX IF NOT EXISTS idx_log_timestamp ON log_entries(timestamp)`);
+    this.db.exec(`CREATE INDEX IF NOT EXISTS idx_log_date ON log_entries(date_str)`);
+    this.db.exec(`CREATE INDEX IF NOT EXISTS idx_voyage_active ON voyage_info(is_active)`);
   }
 
   // Create a new log entry
   createLogEntry(data) {
-    // Get current active voyage
-    const voyage = this.getActiveVoyage();
-    const voyageId = voyage ? voyage.id : null;
+    try {
+      const voyage = this.getActiveVoyage();
+      const voyageId = voyage ? voyage.id : null;
 
-    const stmt = this.db.prepare(`
-      INSERT INTO log_entries (voyage_id, timestamp, date_str, latitude, longitude, log_text, email_sent, is_auto_track)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-    `);
+      const result = this.db.prepare(`
+        INSERT INTO log_entries (voyage_id, timestamp, date_str, latitude, longitude, log_text, email_sent, is_auto_track)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+      `).run(
+        voyageId,
+        data.timestamp,
+        data.dateStr,
+        data.latitude || null,
+        data.longitude || null,
+        data.logText || null,
+        data.emailSent ? 1 : 0,
+        data.isAutoTrack ? 1 : 0
+      );
 
-    stmt.run([
-      voyageId,
-      data.timestamp,
-      data.dateStr,
-      data.latitude || null,
-      data.longitude || null,
-      data.logText || null,
-      data.emailSent ? 1 : 0,
-      data.isAutoTrack ? 1 : 0
-    ]);
-    
-    stmt.free();
-
-    // Get last insert ID
-    const result = this.db.exec('SELECT last_insert_rowid() as id');
-    const logId = result[0].values[0][0];
-    
-    this.saveDatabase();
-    return logId;
+      return result.lastInsertRowid;
+    } catch (error) {
+      this.app.error(`createLogEntry error: ${error.message}`);
+      throw error;
+    }
   }
 
   // Add data point to a log entry
   addLogData(logId, dataPath, label, value, unit) {
-    const stmt = this.db.prepare(`
+    this.db.prepare(`
       INSERT INTO log_data (log_id, data_path, data_label, data_value, data_unit)
       VALUES (?, ?, ?, ?, ?)
-    `);
-
-    stmt.run([logId, dataPath, label, value || null, unit || null]);
-    stmt.free();
-    this.saveDatabase();
+    `).run(logId, dataPath, label, value || null, unit || null);
   }
 
   // Add distance info to a log entry
   addDistanceData(logId, distanceSinceLast, totalDistance) {
-    const stmt = this.db.prepare(`
+    this.db.prepare(`
       INSERT INTO distance_log (log_id, distance_since_last, total_distance)
       VALUES (?, ?, ?)
-    `);
-
-    stmt.run([logId, distanceSinceLast, totalDistance]);
-    stmt.free();
-    this.saveDatabase();
+    `).run(logId, distanceSinceLast, totalDistance);
   }
 
   // Get all log entries
   getAllLogs() {
-    const result = this.db.exec(`
+    return this.db.prepare(`
       SELECT * FROM log_entries ORDER BY timestamp DESC
-    `);
-    
-    if (result.length === 0) return [];
-    
-    return this.resultToObjects(result[0]);
+    `).all();
   }
 
-  /**
-   * Get log entry for a specific date
-   * @param {string} dateStr - Date string in YYYY-MM-DD format
-   * @returns {Object|null} Log entry with associated data, or null if not found
-   */
+  // Get log entry for a specific date
   getLogByDate(dateStr) {
-    
-    // First, get the main log entry
-    // Prefer noon reports (is_auto_track = 0) over auto-track positions
-    const logResult = this.db.exec(`
-      SELECT * FROM log_entries 
-      WHERE date_str = ? 
+    const log = this.db.prepare(`
+      SELECT * FROM log_entries
+      WHERE date_str = ?
       ORDER BY is_auto_track ASC, timestamp DESC
       LIMIT 1
-    `, [dateStr]);
-    
-    
-    if (logResult.length === 0 || logResult[0].values.length === 0) {
-      return null;
-    }
-    
-    const log = this.resultToObjects(logResult[0])[0];
-    
-    // Get associated environmental data
-    const dataResult = this.db.exec(`
+    `).get(dateStr);
+
+    if (!log) return null;
+
+    log.data = this.db.prepare(`
       SELECT * FROM log_data WHERE log_id = ?
-    `, [log.id]);
-    
-    if (dataResult.length > 0) {
-      log.data = this.resultToObjects(dataResult[0]);
-    } else {
-      log.data = [];
-    }
-    
-    // Get distance data (check both tables for backward compatibility)
-    let distResult = this.db.exec(`
-      SELECT * FROM log_distances WHERE log_id = ?
-    `, [log.id]);
-    
-    // Fallback to old table name if new one doesn't exist
-    if (distResult.length === 0) {
-      distResult = this.db.exec(`
-        SELECT * FROM distance_log WHERE log_id = ?
-      `, [log.id]);
-    }
-    
-    if (distResult.length > 0 && distResult[0].values.length > 0) {
-      const distData = this.resultToObjects(distResult[0])[0];
+    `).all(log.id);
+
+    const dist = this.db.prepare(`
+      SELECT * FROM distance_log WHERE log_id = ?
+    `).get(log.id);
+
+    if (dist) {
       log.distance = {
-        distance_since_last: distData.distance_since_last,
-        total_distance: distData.total_distance
+        distance_since_last: dist.distance_since_last,
+        total_distance: dist.total_distance
       };
     }
-    
+
     return log;
   }
 
-  /**
-   * Get all unique dates that have logs
-   * @returns {Array} Array of date strings with log info
-   */
+  // Get all unique dates that have logs
   getAllLogDates() {
-    
-    const result = this.db.exec(`
-      SELECT DISTINCT date_str, 
+    return this.db.prepare(`
+      SELECT DISTINCT date_str,
              MIN(is_auto_track) as has_noon_report,
              COUNT(*) as entry_count
-      FROM log_entries 
+      FROM log_entries
       GROUP BY date_str
       ORDER BY date_str DESC
-    `);
-    
-    
-    if (result.length === 0) {
-      return [];
-    }
-    
-    const dates = this.resultToObjects(result[0]);
-    if (dates.length > 0) {
-    }
-    
-    return dates;
-  }
-  
-  // Helper to convert sql.js results to objects
-  resultToObjects(result) {
-    const columns = result.columns;
-    const values = result.values;
-    
-    return values.map(row => {
-      const obj = {};
-      columns.forEach((col, idx) => {
-        obj[col] = row[idx];
-      });
-      return obj;
-    });
+    `).all();
   }
 
   // Get log by ID with all associated data
   getLogById(logId) {
-    const logResult = this.db.exec('SELECT * FROM log_entries WHERE id = ?', [logId]);
-    
-    if (logResult.length === 0 || logResult[0].values.length === 0) return null;
-    
-    const log = this.resultToObjects(logResult[0])[0];
+    const log = this.db.prepare('SELECT * FROM log_entries WHERE id = ?').get(logId);
+    if (!log) return null;
 
-    const dataResult = this.db.exec('SELECT * FROM log_data WHERE log_id = ?', [logId]);
-    const data = dataResult.length > 0 ? this.resultToObjects(dataResult[0]) : [];
-
-    const distResult = this.db.exec('SELECT * FROM distance_log WHERE log_id = ?', [logId]);
-    const distance = distResult.length > 0 && distResult[0].values.length > 0 
-      ? this.resultToObjects(distResult[0])[0] 
-      : null;
+    const data = this.db.prepare('SELECT * FROM log_data WHERE log_id = ?').all(logId);
+    const dist = this.db.prepare('SELECT * FROM distance_log WHERE log_id = ?').get(logId);
 
     return {
       ...log,
       data,
-      distance
+      distance: dist || null
     };
   }
 
   // Get the last noon report entry (not auto-tracked positions)
   getLastLog() {
-    const result = this.db.exec(`
+    return this.db.prepare(`
       SELECT * FROM log_entries WHERE is_auto_track = 0 ORDER BY timestamp DESC LIMIT 1
-    `);
-    
-    if (result.length === 0 || result[0].values.length === 0) return null;
-    
-    return this.resultToObjects(result[0])[0];
+    `).get() || null;
   }
 
   // Get logs within a date range
   getLogsByDateRange(startDate, endDate) {
-    const result = this.db.exec(`
-      SELECT * FROM log_entries 
+    return this.db.prepare(`
+      SELECT * FROM log_entries
       WHERE date_str >= ? AND date_str <= ?
       ORDER BY timestamp ASC
-    `, [startDate, endDate]);
-    
-    if (result.length === 0) return [];
-    
-    return this.resultToObjects(result[0]);
+    `).all(startDate, endDate);
   }
 
   // Update email sent status
   markEmailSent(logId) {
-    const stmt = this.db.prepare(`
-      UPDATE log_entries SET email_sent = 1 WHERE id = ?
-    `);
-    stmt.run([logId]);
-    stmt.free();
-    this.saveDatabase();
+    this.db.prepare(`UPDATE log_entries SET email_sent = 1 WHERE id = ?`).run(logId);
   }
 
   // Voyage management
   startNewVoyage(name = null) {
-    // End any active voyage
-    const endStmt = this.db.prepare(`
-      UPDATE voyage_info SET is_active = 0, end_timestamp = ?
-      WHERE is_active = 1
-    `);
-    endStmt.run([Math.floor(Date.now() / 1000)]);
-    endStmt.free();
-
-    // Start new voyage
-    const stmt = this.db.prepare(`
-      INSERT INTO voyage_info (voyage_name, start_timestamp, is_active)
-      VALUES (?, ?, 1)
-    `);
-
+    const voyageName = name || `Voyage ${new Date().toISOString().split('T')[0]}`;
     const timestamp = Math.floor(Date.now() / 1000);
-    stmt.run([name || `Voyage ${new Date().toISOString().split('T')[0]}`, timestamp]);
-    stmt.free();
-    
-    this.saveDatabase();
-    
-    // Get the ID of the newly created voyage
-    const result = this.db.exec('SELECT last_insert_rowid() as id');
-    return result[0].values[0][0];
+
+    this.db.prepare(`
+      UPDATE voyage_info SET is_active = 0, end_timestamp = ? WHERE is_active = 1
+    `).run(timestamp);
+
+    const result = this.db.prepare(`
+      INSERT INTO voyage_info (voyage_name, start_timestamp, is_active) VALUES (?, ?, 1)
+    `).run(voyageName, timestamp);
+
+    const newId = result.lastInsertRowid;
+    this.app.debug(`New voyage started — ID: ${newId}, name: "${voyageName}"`);
+    return newId;
   }
 
   // Get active voyage
   getActiveVoyage() {
-    const result = this.db.exec(`
-      SELECT * FROM voyage_info WHERE is_active = 1 LIMIT 1
-    `);
-    
-    if (result.length === 0 || result[0].values.length === 0) return null;
-    
-    return this.resultToObjects(result[0])[0];
+    return this.db.prepare(`SELECT * FROM voyage_info WHERE is_active = 1 LIMIT 1`).get() || null;
   }
 
   // Get total distance for active voyage calculated from position track
@@ -395,14 +253,11 @@ class LogStorage {
   }
 
   /**
-   * Calculate distance sailed since a given timestamp using position track
-   * Sums haversine distance between consecutive auto-tracked positions
-   * @param {number} voyageId - Voyage ID to scope positions
-   * @param {number} sinceTimestamp - Unix timestamp to calculate from
-   * @returns {number} Distance in nautical miles
+   * Calculate distance sailed since a given timestamp using position track.
+   * Sums haversine distance between consecutive auto-tracked positions.
    */
   getDistanceSinceTimestamp(voyageId, sinceTimestamp) {
-    const result = this.db.exec(`
+    const points = this.db.prepare(`
       SELECT latitude, longitude FROM log_entries
       WHERE is_auto_track = 1
         AND voyage_id = ?
@@ -410,17 +265,16 @@ class LogStorage {
         AND latitude IS NOT NULL
         AND longitude IS NOT NULL
       ORDER BY timestamp ASC
-    `, [voyageId, sinceTimestamp]);
+    `).all(voyageId, sinceTimestamp);
 
-    if (result.length === 0 || result[0].values.length < 2) return 0;
+    if (points.length < 2) return 0;
 
-    const points = result[0].values;
-    const R = 3440.065; // Earth radius in nautical miles
+    const R = 3440.065;
     let total = 0;
 
     for (let i = 1; i < points.length; i++) {
-      const [lat1, lon1] = points[i - 1];
-      const [lat2, lon2] = points[i];
+      const { latitude: lat1, longitude: lon1 } = points[i - 1];
+      const { latitude: lat2, longitude: lon2 } = points[i];
       if (lat1 == null || lon1 == null || lat2 == null || lon2 == null) continue;
       const dLat = (lat2 - lat1) * Math.PI / 180;
       const dLon = (lon2 - lon1) * Math.PI / 180;
@@ -435,28 +289,25 @@ class LogStorage {
 
   // Get current active voyage info
   getCurrentVoyage() {
-    const result = this.db.exec(`
-      SELECT id, voyage_name, start_timestamp
-      FROM voyage_info
-      WHERE is_active = 1
-    `);
-    
-    if (result.length === 0 || result[0].values.length === 0) {
+    const row = this.db.prepare(`
+      SELECT id, voyage_name, start_timestamp FROM voyage_info WHERE is_active = 1
+    `).get();
+
+    if (!row) {
       return { id: null, name: 'Unnamed Voyage', startTimestamp: null };
     }
-    
-    const row = result[0].values[0];
+
     return {
-      id: row[0],
-      name: row[1] || 'Unnamed Voyage',
-      startTimestamp: row[2]
+      id: row.id,
+      name: row.voyage_name || 'Unnamed Voyage',
+      startTimestamp: row.start_timestamp
     };
   }
 
   // Get all voyages with stats
   getAllVoyages() {
-    const result = this.db.exec(`
-      SELECT 
+    const voyages = this.db.prepare(`
+      SELECT
         v.id,
         v.voyage_name,
         v.start_timestamp,
@@ -467,11 +318,9 @@ class LogStorage {
       LEFT JOIN log_entries le ON le.voyage_id = v.id
       GROUP BY v.id
       ORDER BY v.start_timestamp DESC
-    `);
+    `).all();
 
-    if (result.length === 0) return [];
-
-    return this.resultToObjects(result[0]).map(voyage => ({
+    return voyages.map(voyage => ({
       id: voyage.id,
       name: voyage.voyage_name || 'Unnamed Voyage',
       startTimestamp: voyage.start_timestamp,
@@ -484,189 +333,122 @@ class LogStorage {
 
   // Get logs for a specific voyage
   getLogsByVoyage(voyageId) {
-    const result = this.db.exec(`
-      SELECT v.start_timestamp, v.is_active
-      FROM voyage_info v
-      WHERE v.id = ?
-    `, [voyageId]);
-    
-    if (result.length === 0) return [];
-    
-    const voyage = result[0].values[0];
-    const startTimestamp = voyage[0];
-    const isActive = voyage[1];
-    
-    // Get end timestamp (start of next voyage, or null if active)
+    const voyageRow = this.db.prepare(`
+      SELECT start_timestamp, is_active FROM voyage_info WHERE id = ?
+    `).get(voyageId);
+
+    if (!voyageRow) return [];
+
+    const { start_timestamp: startTimestamp, is_active: isActive } = voyageRow;
+
     let endTimestamp = null;
     if (!isActive) {
-      const nextResult = this.db.exec(`
-        SELECT start_timestamp 
-        FROM voyage_info 
-        WHERE id > ? 
-        ORDER BY id LIMIT 1
-      `, [voyageId]);
-      
-      if (nextResult.length > 0 && nextResult[0].values.length > 0) {
-        endTimestamp = nextResult[0].values[0][0];
-      }
+      const next = this.db.prepare(`
+        SELECT start_timestamp FROM voyage_info WHERE id > ? ORDER BY id LIMIT 1
+      `).get(voyageId);
+      if (next) endTimestamp = next.start_timestamp;
     }
-    
-    // Get logs for this voyage
-    let query = `
-      SELECT * FROM log_entries 
-      WHERE timestamp >= ?
-    `;
-    const params = [startTimestamp];
-    
+
+    let logs;
     if (endTimestamp) {
-      query += ` AND timestamp < ?`;
-      params.push(endTimestamp);
+      logs = this.db.prepare(`
+        SELECT * FROM log_entries WHERE timestamp >= ? AND timestamp < ? ORDER BY timestamp DESC
+      `).all(startTimestamp, endTimestamp);
+    } else {
+      logs = this.db.prepare(`
+        SELECT * FROM log_entries WHERE timestamp >= ? ORDER BY timestamp DESC
+      `).all(startTimestamp);
     }
-    
-    query += ` ORDER BY timestamp DESC`;
-    
-    const logsResult = this.db.exec(query, params);
-    
-    if (logsResult.length === 0) return [];
-    
-    return this.resultToObjects(logsResult[0]).map(log => this.getLogById(log.id));
+
+    return logs.map(log => this.getLogById(log.id));
   }
 
   // Delete voyage and all associated logs
   deleteVoyage(voyageId) {
-    // Active voyages can be deleted — caller is responsible for stopping scheduler
-    
-    // Get logs for this voyage
-    const logs = this.getLogsByVoyage(voyageId);
-    const logIds = logs.map(log => log.id);
-    
-    // Delete distance data
-    for (const logId of logIds) {
-      this.db.run(`DELETE FROM distance_log WHERE log_id = ?`, [logId]);
-    }
-    
-    // Delete log data
-    for (const logId of logIds) {
-      this.db.run(`DELETE FROM log_data WHERE log_id = ?`, [logId]);
-    }
-    
-    // Delete log entries
-    for (const logId of logIds) {
-      this.db.run(`DELETE FROM log_entries WHERE id = ?`, [logId]);
-    }
-    
-    // Delete voyage
-    this.db.run(`DELETE FROM voyage_info WHERE id = ?`, [voyageId]);
-    
-    this.saveDatabase();
-    
-    return {
-      success: true,
-      deletedLogs: logIds.length,
-      voyageId: voyageId
-    };
+    // Single query for IDs only — avoids hydrating thousands of log objects
+    const logIds = this.db.prepare(`
+      SELECT id FROM log_entries WHERE voyage_id = ?
+    `).all(voyageId).map(row => row.id);
+
+    const deleteDistance = this.db.prepare(`DELETE FROM distance_log WHERE log_id = ?`);
+    const deleteLogData  = this.db.prepare(`DELETE FROM log_data WHERE log_id = ?`);
+    const deleteEntry    = this.db.prepare(`DELETE FROM log_entries WHERE id = ?`);
+
+    for (const logId of logIds) deleteDistance.run(logId);
+    for (const logId of logIds) deleteLogData.run(logId);
+    for (const logId of logIds) deleteEntry.run(logId);
+
+    this.db.prepare(`DELETE FROM voyage_info WHERE id = ?`).run(voyageId);
+    this.app.debug(`Voyage ${voyageId} deleted — removed ${logIds.length} log entries`);
+
+    return { success: true, deletedLogs: logIds.length, voyageId };
   }
 
   // Rename voyage
   renameVoyage(voyageId, newName) {
-    this.db.run(`UPDATE voyage_info SET voyage_name = ? WHERE id = ?`, [newName, voyageId]);
-    this.saveDatabase();
-    
-    return {
-      success: true,
-      voyageId: voyageId,
-      newName: newName
-    };
+    this.db.prepare(`UPDATE voyage_info SET voyage_name = ? WHERE id = ?`).run(newName, voyageId);
+    return { success: true, voyageId, newName };
   }
 
   // Export logs as JSON
   exportLogs(startDate = null, endDate = null) {
-    let logs;
-    if (startDate && endDate) {
-      logs = this.getLogsByDateRange(startDate, endDate);
-    } else {
-      logs = this.getAllLogs();
-    }
-
-    // Get full data for each log
+    const logs = (startDate && endDate)
+      ? this.getLogsByDateRange(startDate, endDate)
+      : this.getAllLogs();
     return logs.map(log => this.getLogById(log.id));
   }
 
-  /**
-   * Get auto-tracked positions for a specific voyage with sensor data
-   * @param {number} voyageId - Voyage ID
-   * @param {number} limit - Max records to return
-   * @returns {Array} Array of position objects with data
-   */
+  // Get auto-tracked positions for a specific voyage with sensor data
   getPositionsByVoyage(voyageId, limit = 200) {
-    // Get voyage time bounds
-    const voyageResult = this.db.exec(
-      `SELECT start_timestamp, is_active FROM voyage_info WHERE id = ?`,
-      [voyageId]
-    );
-    if (voyageResult.length === 0 || voyageResult[0].values.length === 0) return [];
+    const voyageRow = this.db.prepare(
+      `SELECT start_timestamp, is_active FROM voyage_info WHERE id = ?`
+    ).get(voyageId);
 
-    const startTimestamp = voyageResult[0].values[0][0];
-    const isActive = voyageResult[0].values[0][1];
+    if (!voyageRow) return [];
+
+    const { start_timestamp: startTimestamp, is_active: isActive } = voyageRow;
 
     let endTimestamp = null;
     if (!isActive) {
-      const nextResult = this.db.exec(
-        `SELECT start_timestamp FROM voyage_info WHERE id > ? ORDER BY id LIMIT 1`,
-        [voyageId]
-      );
-      if (nextResult.length > 0 && nextResult[0].values.length > 0) {
-        endTimestamp = nextResult[0].values[0][0];
-      }
+      const next = this.db.prepare(
+        `SELECT start_timestamp FROM voyage_info WHERE id > ? ORDER BY id LIMIT 1`
+      ).get(voyageId);
+      if (next) endTimestamp = next.start_timestamp;
     }
 
-    let query = `
-      SELECT id, timestamp, latitude, longitude
-      FROM log_entries
-      WHERE is_auto_track = 1 AND timestamp >= ?
-    `;
-    const params = [startTimestamp];
+    let positions;
     if (endTimestamp) {
-      query += ` AND timestamp < ?`;
-      params.push(endTimestamp);
+      positions = this.db.prepare(`
+        SELECT id, timestamp, latitude, longitude FROM log_entries
+        WHERE is_auto_track = 1 AND timestamp >= ? AND timestamp < ?
+        ORDER BY timestamp DESC LIMIT ?
+      `).all(startTimestamp, endTimestamp, limit);
+    } else {
+      positions = this.db.prepare(`
+        SELECT id, timestamp, latitude, longitude FROM log_entries
+        WHERE is_auto_track = 1 AND timestamp >= ?
+        ORDER BY timestamp DESC LIMIT ?
+      `).all(startTimestamp, limit);
     }
-    query += ` ORDER BY timestamp DESC LIMIT ?`;
-    params.push(limit);
 
-    const result = this.db.exec(query, params);
-    if (result.length === 0) return [];
-
-    return this.resultToObjects(result[0]).map(pos => {
-      const dataResult = this.db.exec(
-        `SELECT data_label, data_value, data_unit FROM log_data WHERE log_id = ?`,
-        [pos.id]
-      );
-      return {
-        ...pos,
-        data: dataResult.length > 0 ? this.resultToObjects(dataResult[0]) : []
-      };
-    });
+    return positions.map(pos => ({
+      ...pos,
+      data: this.db.prepare(
+        `SELECT data_label, data_value, data_unit FROM log_data WHERE log_id = ?`
+      ).all(pos.id)
+    }));
   }
 
-  /**
-   * Get count of auto-tracked positions for current voyage
-   * @returns {number} Count of position entries
-   */
+  // Get count of auto-tracked positions for current voyage
   getPositionTrackCount() {
     const voyage = this.getActiveVoyage();
     if (!voyage) return 0;
 
-    const result = this.db.exec(`
-      SELECT COUNT(*) as count
-      FROM log_entries
-      WHERE voyage_id = ? AND is_auto_track = 1
-    `, [voyage.id]);
+    const row = this.db.prepare(`
+      SELECT COUNT(*) as count FROM log_entries WHERE voyage_id = ? AND is_auto_track = 1
+    `).get(voyage.id);
 
-    if (result.length === 0 || result[0].values.length === 0) {
-      return 0;
-    }
-
-    return result[0].values[0][0];
+    return row ? row.count : 0;
   }
 
   close() {
