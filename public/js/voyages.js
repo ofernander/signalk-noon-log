@@ -30,9 +30,17 @@ class VoyageManager {
                 
                 html += `
                     <div class="voyage-item${voyage.isActive ? ' active' : ''}" data-voyage-id="${voyage.id}">
-                        <div class="voyage-name">${voyage.name}${activeTag}</div>
-                        <div class="voyage-stats">
-                            ${startDate} • ${voyage.logCount} entries • ${voyage.totalDistance.toFixed(1)} nm
+                        <div class="voyage-item-main">
+                            <div>
+                                <div class="voyage-name">${voyage.name}${activeTag}</div>
+                                <div class="voyage-stats">
+                                    ${startDate} • ${voyage.logCount} entries • ${voyage.totalDistance.toFixed(1)} nm
+                                </div>
+                            </div>
+                            ${voyage.isActive ? `
+                            <button class="btn-end-voyage-inline" data-voyage-id="${voyage.id}" title="End Voyage">
+                                End
+                            </button>` : ''}
                         </div>
                     </div>
                 `;
@@ -45,6 +53,15 @@ class VoyageManager {
                 item.addEventListener('click', () => {
                     const voyageId = parseInt(item.dataset.voyageId);
                     this.showVoyageDetails(voyageId);
+                });
+            });
+
+            // Add end voyage button handlers
+            document.querySelectorAll('.btn-end-voyage-inline').forEach(btn => {
+                btn.addEventListener('click', (e) => {
+                    e.stopPropagation();
+                    const voyageId = parseInt(btn.dataset.voyageId);
+                    this.endVoyage(voyageId);
                 });
             });
             
@@ -151,6 +168,11 @@ class VoyageManager {
                         <br><small>All data - backup</small>
                     </button>
                 </div>
+                ${voyage.isActive ? `
+                <button class="export-btn" style="width: 100%; margin-bottom: 10px; background: var(--warning, #b45309); color: white;" onclick="window.voyageManager.endVoyage(${voyageId})">
+                    🏁 End Voyage
+                    <br><small>Close this voyage — logging stops until a new voyage is started</small>
+                </button>` : ''}
                 <button class="export-btn delete-voyage-btn" style="width: 100%;" onclick="window.voyageManager.deleteVoyage(${voyageId})">
                     🗑️ Delete Voyage
                     <br><small>Permanently delete all logs from this voyage</small>
@@ -226,6 +248,25 @@ class VoyageManager {
                 document.getElementById('voyageModal').style.display = 'none';
                 this.loadVoyages();
                 this.mainUI.ui?.loadVoyageLogs();
+            } else {
+                this.mainUI.showMessage('error', `Error: ${result.error}`);
+            }
+        } catch (error) {
+            this.mainUI.showMessage('error', `Error: ${error.message}`);
+        }
+    }
+
+    // End voyage without starting a new one
+    async endVoyage(voyageId) {
+        if (!confirm('End this voyage? Logging will stop until a new voyage is started.')) return;
+        try {
+            const response = await fetch('/plugins/signalk-noon-log/api/endVoyage', { method: 'POST' });
+            const result = await response.json();
+            if (result.success) {
+                document.getElementById('voyageModal').style.display = 'none';
+                this.loadVoyages();
+                this.mainUI.ui?.loadVoyageLogs();
+                this.mainUI.showMessage('success', 'Voyage ended');
             } else {
                 this.mainUI.showMessage('error', `Error: ${result.error}`);
             }

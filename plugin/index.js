@@ -55,11 +55,13 @@ module.exports = function (app) {
           return;
         }
 
-        // Check if we need to start a new voyage (first time setup)
+        // Log active voyage status — no auto-creation, user manages voyages manually
         const activeVoyage = plugin.storage.getActiveVoyage();
-        if (!activeVoyage) {
-          app.debug('No active voyage found, starting new voyage');
-          plugin.storage.startNewVoyage('First Voyage');
+        if (activeVoyage) {
+          app.debug(`Active voyage: "${activeVoyage.voyage_name}" (ID: ${activeVoyage.id})`);
+        } else {
+          app.debug('No active voyage — user must create one to begin logging');
+          app.setPluginStatus('No active voyage — create one to begin logging');
         }
 
         // Initialize all components
@@ -83,8 +85,10 @@ module.exports = function (app) {
         // Initialize Freeboard-SK sync (start deferred until position is available)
         plugin.freeboardSync = new FreeboardSync(app, plugin, plugin.storage);
 
-        // Wait for position data before starting scheduler
-        await plugin.waitForPosition();
+        // Only start scheduler if there is an active voyage
+        if (activeVoyage) {
+          await plugin.waitForPosition();
+        }
 
       } catch (error) {
         app.setPluginError(`Startup error: ${error.message}`);
@@ -116,6 +120,7 @@ module.exports = function (app) {
 
       if (plugin.storage) {
         plugin.storage.close();
+        plugin.storage = null;
       }
 
       app.setPluginStatus('Stopped');
@@ -161,6 +166,11 @@ module.exports = function (app) {
      * Start the scheduler once position is available
      */
     startScheduler: function () {
+      // Guard — don't start if no active voyage
+      if (!plugin.storage.getActiveVoyage()) {
+        app.debug('startScheduler called with no active voyage — skipping');
+        return;
+      }
       app.debug(`[startScheduler] positionTracking.enabled=${plugin.options.positionTracking?.enabled}`);
 
       plugin.scheduler = new ReportScheduler(

@@ -128,6 +128,14 @@ module.exports = function registerRoutes(router, app, plugin) {
     handler.resetVoyage(req, res, app, plugin);
   });
 
+  /**
+   * POST /api/endVoyage
+   * End the active voyage without starting a new one
+   */
+  router.post('/api/endVoyage', (req, res) => {
+    handler.endVoyage(req, res, app, plugin);
+  });
+
   // ============================================================================
   // EMAIL MANAGEMENT ENDPOINTS
   // ============================================================================

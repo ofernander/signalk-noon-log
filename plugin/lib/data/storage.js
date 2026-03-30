@@ -365,29 +365,29 @@ class LogStorage {
 
   // Delete voyage and all associated logs
   deleteVoyage(voyageId) {
-    // Single query for IDs only — avoids hydrating thousands of log objects
-    const logIds = this.db.prepare(`
-      SELECT id FROM log_entries WHERE voyage_id = ?
-    `).all(voyageId).map(row => row.id);
-
-    const deleteDistance = this.db.prepare(`DELETE FROM distance_log WHERE log_id = ?`);
-    const deleteLogData  = this.db.prepare(`DELETE FROM log_data WHERE log_id = ?`);
-    const deleteEntry    = this.db.prepare(`DELETE FROM log_entries WHERE id = ?`);
-
-    for (const logId of logIds) deleteDistance.run(logId);
-    for (const logId of logIds) deleteLogData.run(logId);
-    for (const logId of logIds) deleteEntry.run(logId);
-
+    // Bulk delete using subquery — single statement per table, no per-row loop
+    // Previously looped per row ID which blocked the event loop on large voyages
+    this.db.prepare(`DELETE FROM distance_log WHERE log_id IN (SELECT id FROM log_entries WHERE voyage_id = ?)`).run(voyageId);
+    this.db.prepare(`DELETE FROM log_data WHERE log_id IN (SELECT id FROM log_entries WHERE voyage_id = ?)`).run(voyageId);
+    this.db.prepare(`DELETE FROM log_entries WHERE voyage_id = ?`).run(voyageId);
     this.db.prepare(`DELETE FROM voyage_info WHERE id = ?`).run(voyageId);
-    this.app.debug(`Voyage ${voyageId} deleted — removed ${logIds.length} log entries`);
-
-    return { success: true, deletedLogs: logIds.length, voyageId };
+    this.app.debug(`Voyage ${voyageId} deleted`);
+    return { success: true, voyageId };
   }
 
   // Rename voyage
   renameVoyage(voyageId, newName) {
     this.db.prepare(`UPDATE voyage_info SET voyage_name = ? WHERE id = ?`).run(newName, voyageId);
     return { success: true, voyageId, newName };
+  }
+
+  // End the active voyage without starting a new one
+  endVoyage() {
+    const timestamp = Math.floor(Date.now() / 1000);
+    this.db.prepare(`
+      UPDATE voyage_info SET is_active = 0, end_timestamp = ? WHERE is_active = 1
+    `).run(timestamp);
+    this.app.debug('Active voyage ended');
   }
 
   // Export logs as JSON
@@ -452,8 +452,13 @@ class LogStorage {
   }
 
   close() {
-    if (this.db) {
-      this.db.close();
+    try {
+      if (this.db) {
+        this.db.close();
+        this.db = null;
+      }
+    } catch (error) {
+      this.app.error(`Database close error: ${error.message}`);
     }
   }
 }

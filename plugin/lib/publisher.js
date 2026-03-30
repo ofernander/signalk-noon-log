@@ -136,11 +136,11 @@ class DeltaPublisher {
         value: reportsSent
       });
       
-      // Current voyage name
+      // Current voyage name — publish '--' if no active voyage
       const voyage = this.plugin.storage.getCurrentVoyage();
       deltas.push({
         path: 'navigation.log.voyageName',
-        value: voyage.name
+        value: voyage.id ? voyage.name : '--'
       });
 
       // Position track count for current voyage

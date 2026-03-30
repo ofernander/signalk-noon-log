@@ -677,9 +677,35 @@ body {
     background-color: rgba(43, 108, 176, 0.1);
 }
 
+.voyage-item-main {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 10px;
+}
+
 .voyage-name {
     font-weight: 600;
     margin-bottom: 4px;
+}
+
+.btn-end-voyage-inline {
+    background: transparent;
+    border: 1px solid var(--warning-color);
+    color: var(--warning-color);
+    padding: 4px 10px;
+    border-radius: 4px;
+    cursor: pointer;
+    font-size: 12px;
+    font-weight: 500;
+    white-space: nowrap;
+    flex-shrink: 0;
+    transition: all 0.2s;
+}
+
+.btn-end-voyage-inline:hover {
+    background: var(--warning-color);
+    color: white;
 }
 
 .voyage-stats {
@@ -829,4 +855,102 @@ body {
 
 .email-list::-webkit-scrollbar-thumb:hover {
     background: #a0aec0;
+}
+
+/* ===================================
+   Pending Log Styles
+   =================================== */
+
+.pending-log-section {
+    background-color: var(--pending-bg, #fff3cd);
+    border: 2px dashed var(--pending-border, #ffc107);
+    border-radius: 8px;
+    padding: 15px;
+    margin-bottom: 20px;
+}
+
+.pending-log-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 10px;
+}
+
+.pending-log-title {
+    font-weight: 600;
+    color: var(--pending-text, #856404);
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.pending-log-badge {
+    background-color: var(--pending-border, #ffc107);
+    color: var(--pending-badge-text, #000);
+    padding: 2px 8px;
+    border-radius: 12px;
+    font-size: 0.75rem;
+    font-weight: 600;
+}
+
+.pending-log-text {
+    background-color: var(--card-background);
+    padding: 12px;
+    border-radius: 4px;
+    white-space: pre-wrap;
+    word-wrap: break-word;
+    font-family: inherit;
+    line-height: 1.5;
+    max-height: 200px;
+    overflow-y: auto;
+}
+
+.pending-log-empty {
+    color: var(--pending-text, #856404);
+    font-style: italic;
+    text-align: center;
+    padding: 10px;
+}
+
+.pending-log-actions {
+    display: flex;
+    gap: 10px;
+    margin-top: 10px;
+}
+
+.btn-edit-pending {
+    background-color: var(--pending-border, #ffc107);
+    color: var(--pending-badge-text, #000);
+    border: none;
+    padding: 8px 16px;
+    border-radius: 4px;
+    cursor: pointer;
+    font-weight: 500;
+}
+
+.btn-edit-pending:hover {
+    background-color: var(--pending-border-hover, #e0a800);
+}
+
+.btn-clear-pending {
+    background-color: var(--danger-color);
+    color: white;
+    border: none;
+    padding: 8px 16px;
+    border-radius: 4px;
+    cursor: pointer;
+    font-weight: 500;
+}
+
+.btn-clear-pending:hover {
+    background-color: var(--danger-hover, #c82333);
+}
+
+/* Night mode overrides for pending log */
+body.night-mode {
+    --pending-bg: #1a0000;
+    --pending-border: #cc0000;
+    --pending-border-hover: #990000;
+    --pending-text: #ff4444;
+    --pending-badge-text: #ff4444;
 }

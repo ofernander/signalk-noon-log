@@ -58,7 +58,7 @@ class NoonLogUI {
             const result = await response.json();
 
             if (result.success && result.data) {
-                this.state.voyageName = result.data.name;
+                this.state.voyageName = result.data.id ? result.data.name : '--';
                 this.ui.updateUI();
             }
         } catch (error) {

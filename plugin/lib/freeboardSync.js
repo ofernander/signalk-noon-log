@@ -22,12 +22,7 @@ class FreeboardSync {
     const options = this.plugin.options;
     
     if (!options.positionTracking?.enabled) {
-      this.app.debug('Freeboard sync: Position tracking not enabled');
-      return;
-    }
-
-    if (!options.freeboardSync?.enabled) {
-      this.app.debug('Freeboard sync: Not enabled in settings');
+      this.app.debug('Freeboard sync: position tracking not enabled, skipping');
       return;
     }
 
