@@ -1,10 +1,10 @@
 {
   "name": "signalk-noon-log",
-  "version": "0.1.7",
+  "version": "0.1.9",
   "description": "Semi-automatic logbook and vessel tracker",
   "main": "plugin/index.js",
   "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1"
+    "test": "node --test"
   },
   "keywords": [
     "signalk-node-server-plugin",
@@ -21,16 +21,20 @@
     "name": "Oliver Fernander",
     "email": "oliver@fernander.net"
   },
-  "license": "MIT",
+  "license": "GPL-3.0",
+  "engines": {
+    "node": ">=22.5.0"
+  },
   "repository": {
     "type": "git",
     "url": "https://github.com/ofernander/signalk-noon-log.git"
   },
   "dependencies": {
-    "nodemailer": "^6.9.0"
+    "express": "^4.21.2",
+    "nodemailer": "^9.0.1"
   },
   "signalk": {
-    "appIcon": "./assets/icons/signalk-noon-log-icon_72x72.png",
+    "appIcon": "./public/assets/icons/signalk-noon-log-icon_72x72.png",
     "displayName": "SignalK-Noon-Log"
   },
   "signalk-plugin-enabled-by-default": true

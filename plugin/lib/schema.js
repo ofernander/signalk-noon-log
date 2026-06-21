@@ -86,6 +86,14 @@ module.exports = {
             '6 hours',
             '12 hours'
           ]
+        },
+        minSpeed: {
+          type: 'number',
+          title: 'Minimum Speed to Record Position (knots)',
+          description: 'Position only recorded when vessel speed exceeds this value. One record is always allowed when vessel first stops (to capture dock/anchor position). Set to 0 to disable.',
+          default: 2,
+          minimum: 0,
+          maximum: 5
         }
       }
     },

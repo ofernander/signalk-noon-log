@@ -12,6 +12,7 @@ class PositionTracker {
     this.options = options;
     this.interval = null;
     this.lastPosition = null;
+    this.recordedWhileStopped = false; // allows one position record when vessel first stops
   }
 
   /**
@@ -60,11 +61,33 @@ class PositionTracker {
       this.app.debug(`[PositionTracker.recordPosition] position=${JSON.stringify(noonData.position)}`);
       
       if (!noonData.position || !noonData.position.latitude) {
-        this.app.debug('[PositionTracker.recordPosition] no position data, skipping');
+        this.app.debug('Position record skipped — no GPS data available');
         return;
       }
 
-      // Check if position has changed significantly (optional optimization)
+      // Speed check — require minimum SOG to record position
+      // One record is always allowed when vessel first stops (captures dock/anchor position)
+      const minSpeed = this.options.positionTracking?.minSpeed ?? 0.5;
+      if (minSpeed > 0) {
+        const sog = this.dataCollector.getValue('navigation.speedOverGround');
+        const sogKnots = sog != null ? sog * 1.94384 : null;
+        const isMoving = sogKnots != null && sogKnots >= minSpeed;
+
+        if (isMoving) {
+          // Vessel moving — reset flag so next stop gets its one allowed record
+          this.recordedWhileStopped = false;
+        } else {
+          if (this.recordedWhileStopped) {
+            this.app.debug(`Position record skipped — SOG ${sogKnots != null ? sogKnots.toFixed(2) + ' kts' : 'unavailable'} below minimum ${minSpeed} kts (stopped position already recorded)`);
+            return;
+          }
+          // First record while stopped — allow it then set flag
+          this.app.debug(`Position recorded at stop — SOG ${sogKnots != null ? sogKnots.toFixed(2) + ' kts' : 'unavailable'} below minimum ${minSpeed} kts`);
+          this.recordedWhileStopped = true;
+        }
+      }
+
+      // Position threshold check
       if (this.shouldSkipPosition(noonData.position)) {
         this.app.debug('[PositionTracker.recordPosition] position unchanged, skipping');
         return;
